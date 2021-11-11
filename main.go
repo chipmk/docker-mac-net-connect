@@ -3,18 +3,18 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
 
+	"ggrn.dev/docker-mac-net-connect/networkmanager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -150,17 +150,15 @@ func main() {
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
 	if err != nil {
-		fmt.Errorf("Failed to configure Wireguard device: %v\n", err)
+		logger.Errorf("Failed to configure Wireguard device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	cmd := exec.Command("ifconfig", interfaceName, "inet", hostPeerIp+"/32", vmPeerIp)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err = cmd.Run()
+	networkManager := networkmanager.New()
+
+	_, stderr, err := networkManager.SetInterfaceAddress(hostPeerIp, vmPeerIp, interfaceName)
 	if err != nil {
-		logger.Errorf("Failed to set interface address with ifconfig: %v. %v", err, out.String())
+		logger.Errorf("Failed to set interface address with ifconfig: %v. %v", err, stderr)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -181,19 +179,7 @@ func main() {
 	}
 
 	for _, network := range networks {
-		for _, config := range network.IPAM.Config {
-			if network.Scope == "local" {
-				logger.Verbosef("Adding route for %s -> %s (%s)\n", config.Subnet, interfaceName, network.Name)
-
-				cmd = exec.Command("route", "-q", "-n", "add", "-inet", config.Subnet, "-interface", interfaceName)
-				cmd.Stdout = &out
-				err = cmd.Run()
-				if err != nil {
-					logger.Errorf("Failed to add route: %v. %v", err, out.String())
-					os.Exit(ExitSetupFailed)
-				}
-			}
-		}
+		networkManager.ProcessDockerNetworkCreate(network, interfaceName)
 	}
 
 	logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
@@ -217,6 +203,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
+	// Run container to completion
 	err = cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 	if err != nil {
 		logger.Errorf("Failed to start container: %v", err)
@@ -225,8 +212,15 @@ func main() {
 
 	logger.Verbosef("Wireguard server listening\n")
 
-	logger.Verbosef("Docker event listening\n")
-	msgs, errsChan := cli.Events(ctx, types.EventsOptions{})
+	logger.Verbosef("Watching Docker events\n")
+
+	msgs, errsChan := cli.Events(ctx, types.EventsOptions{
+		Filters: filters.NewArgs(
+			filters.Arg("type", "network"),
+			filters.Arg("event", "create"),
+			filters.Arg("event", "destroy"),
+		),
+	})
 
 	go func() {
 		for {
@@ -234,12 +228,34 @@ func main() {
 			case err := <-errsChan:
 				logger.Errorf("Error: %v\n", err)
 			case msg := <-msgs:
-				logger.Verbosef("%v %v: %v\n", msg.Type, msg.Action, msg.From)
+				// Add routes when new Docker networks are created
+				if msg.Type == "network" && msg.Action == "create" {
+					network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
+					if err != nil {
+						logger.Errorf("Failed to inspect new Docker network: %v", err)
+						continue
+					}
+
+					networkManager.ProcessDockerNetworkCreate(network, interfaceName)
+					continue
+				}
+
+				// Delete routes when Docker networks are destroyed
+				if msg.Type == "network" && msg.Action == "destroy" {
+					network, exists := networkManager.DockerNetworks[msg.Actor.ID]
+					if !exists {
+						logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
+						continue
+					}
+
+					networkManager.ProcessDockerNetworkDestroy(network)
+					continue
+				}
 			}
 		}
 	}()
 
-	// wait for program to terminate
+	// Wait for program to terminate
 
 	signal.Notify(term, syscall.SIGTERM)
 	signal.Notify(term, os.Interrupt)
@@ -250,7 +266,7 @@ func main() {
 	case <-device.Wait():
 	}
 
-	// clean up
+	// Clean up
 
 	uapi.Close()
 	device.Close()
