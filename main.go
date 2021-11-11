@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"ggrn.dev/docker-mac-net-connect/networkmanager"
 	"github.com/docker/docker/api/types"
@@ -170,88 +171,75 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	ctx := context.Background()
-
-	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
-	if err != nil {
-		logger.Errorf("Failed to list Docker networks: %v", err)
-		os.Exit(ExitSetupFailed)
-	}
-
-	for _, network := range networks {
-		networkManager.ProcessDockerNetworkCreate(network, interfaceName)
-	}
-
-	logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
-
-	resp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: "docker-mac-net-connect",
-		Env: []string{
-			"SERVER_PORT=" + strconv.Itoa(port),
-			"HOST_PEER_IP=" + hostPeerIp,
-			"VM_PEER_IP=" + vmPeerIp,
-			"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
-			"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
-		},
-	}, &container.HostConfig{
-		AutoRemove:  true,
-		NetworkMode: "host",
-		CapAdd:      []string{"NET_ADMIN"},
-	}, nil, nil, "wireguard-setup")
-	if err != nil {
-		logger.Errorf("Failed to create container: %v", err)
-		os.Exit(ExitSetupFailed)
-	}
-
-	// Run container to completion
-	err = cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
-	if err != nil {
-		logger.Errorf("Failed to start container: %v", err)
-		os.Exit(ExitSetupFailed)
-	}
-
 	logger.Verbosef("Wireguard server listening\n")
 
-	logger.Verbosef("Watching Docker events\n")
-
-	msgs, errsChan := cli.Events(ctx, types.EventsOptions{
-		Filters: filters.NewArgs(
-			filters.Arg("type", "network"),
-			filters.Arg("event", "create"),
-			filters.Arg("event", "destroy"),
-		),
-	})
+	ctx := context.Background()
 
 	go func() {
 		for {
-			select {
-			case err := <-errsChan:
-				logger.Errorf("Error: %v\n", err)
-			case msg := <-msgs:
-				// Add routes when new Docker networks are created
-				if msg.Type == "network" && msg.Action == "create" {
-					network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
-					if err != nil {
-						logger.Errorf("Failed to inspect new Docker network: %v", err)
+			logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
+
+			err = setupVm(ctx, cli, port, hostPeerIp, vmPeerIp, hostPrivateKey, vmPrivateKey)
+			if err != nil {
+				logger.Errorf("Failed to setup VM: %v", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+			if err != nil {
+				logger.Errorf("Failed to list Docker networks: %v", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			for _, network := range networks {
+				networkManager.ProcessDockerNetworkCreate(network, interfaceName)
+			}
+
+			logger.Verbosef("Watching Docker events\n")
+
+			msgs, errsChan := cli.Events(ctx, types.EventsOptions{
+				Filters: filters.NewArgs(
+					filters.Arg("type", "network"),
+					filters.Arg("event", "create"),
+					filters.Arg("event", "destroy"),
+				),
+			})
+
+			for loop := true; loop; {
+				select {
+				case err := <-errsChan:
+					logger.Errorf("Error: %v\n", err)
+					loop = false
+				case msg := <-msgs:
+					// Add routes when new Docker networks are created
+					if msg.Type == "network" && msg.Action == "create" {
+						network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
+						if err != nil {
+							logger.Errorf("Failed to inspect new Docker network: %v", err)
+							continue
+						}
+
+						networkManager.ProcessDockerNetworkCreate(network, interfaceName)
 						continue
 					}
 
-					networkManager.ProcessDockerNetworkCreate(network, interfaceName)
-					continue
-				}
+					// Delete routes when Docker networks are destroyed
+					if msg.Type == "network" && msg.Action == "destroy" {
+						network, exists := networkManager.DockerNetworks[msg.Actor.ID]
+						if !exists {
+							logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
+							continue
+						}
 
-				// Delete routes when Docker networks are destroyed
-				if msg.Type == "network" && msg.Action == "destroy" {
-					network, exists := networkManager.DockerNetworks[msg.Actor.ID]
-					if !exists {
-						logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
+						networkManager.ProcessDockerNetworkDestroy(network)
 						continue
 					}
-
-					networkManager.ProcessDockerNetworkDestroy(network)
-					continue
 				}
 			}
+
+			time.Sleep(5 * time.Second)
 		}
 	}()
 
@@ -272,4 +260,42 @@ func main() {
 	device.Close()
 
 	logger.Verbosef("Shutting down\n")
+}
+
+func setupVm(
+	ctx context.Context,
+	dockerCli *client.Client,
+	serverPort int,
+	hostPeerIp string,
+	vmPeerIp string,
+	hostPrivateKey wgtypes.Key,
+	vmPrivateKey wgtypes.Key,
+) error {
+	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
+		Image: "docker-mac-net-connect",
+		Env: []string{
+			"SERVER_PORT=" + strconv.Itoa(serverPort),
+			"HOST_PEER_IP=" + hostPeerIp,
+			"VM_PEER_IP=" + vmPeerIp,
+			"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
+			"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
+		},
+	}, &container.HostConfig{
+		AutoRemove:  true,
+		NetworkMode: "host",
+		CapAdd:      []string{"NET_ADMIN"},
+	}, nil, nil, "wireguard-setup")
+	if err != nil {
+		fmt.Errorf("Failed to create container")
+		return err
+	}
+
+	// Run container to completion
+	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	if err != nil {
+		fmt.Errorf("Failed to start container")
+		return err
+	}
+
+	return nil
 }
