@@ -6,12 +6,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
 	"syscall"
 
 	"github.com/docker/docker/api/types"
@@ -37,8 +35,6 @@ const (
 )
 
 func main() {
-	interfaceName := "utun"
-
 	logLevel := func() int {
 		switch os.Getenv("LOG_LEVEL") {
 		case "verbose", "debug":
@@ -48,38 +44,19 @@ func main() {
 		case "silent":
 			return device.LogLevelSilent
 		}
-		return device.LogLevelError
+		return device.LogLevelVerbose
 	}()
 
-	// open TUN device (or use supplied fd)
+	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
+	if err != nil {
+		fmt.Errorf("Failed to create TUN device: %v", err)
+		os.Exit(ExitSetupFailed)
+	}
 
-	tun, err := func() (tun.Device, error) {
-		tunFdStr := os.Getenv(ENV_WG_TUN_FD)
-		if tunFdStr == "" {
-			return tun.CreateTUN(interfaceName, device.DefaultMTU)
-		}
-
-		// construct tun device from supplied fd
-
-		fd, err := strconv.ParseUint(tunFdStr, 10, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		err = syscall.SetNonblock(int(fd), true)
-		if err != nil {
-			return nil, err
-		}
-
-		file := os.NewFile(uintptr(fd), "")
-		return tun.CreateTUNFromFile(file, device.DefaultMTU)
-	}()
-
-	if err == nil {
-		realInterfaceName, err2 := tun.Name()
-		if err2 == nil {
-			interfaceName = realInterfaceName
-		}
+	interfaceName, err := tun.Name()
+	if err != nil {
+		fmt.Errorf("Failed to get TUN device name: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
 	logger := device.NewLogger(
@@ -87,33 +64,11 @@ func main() {
 		fmt.Sprintf("(%s) ", interfaceName),
 	)
 
-	if err != nil {
-		logger.Errorf("Failed to create TUN device: %v", err)
-		os.Exit(ExitSetupFailed)
-	}
-
-	// open UAPI file (or use supplied fd)
-
-	fileUAPI, err := func() (*os.File, error) {
-		uapiFdStr := os.Getenv(ENV_WG_UAPI_FD)
-		if uapiFdStr == "" {
-			return ipc.UAPIOpen(interfaceName)
-		}
-
-		// use supplied fd
-
-		fd, err := strconv.ParseUint(uapiFdStr, 10, 32)
-		if err != nil {
-			return nil, err
-		}
-
-		return os.NewFile(uintptr(fd), ""), nil
-	}()
+	fileUAPI, err := ipc.UAPIOpen(interfaceName)
 
 	if err != nil {
 		logger.Errorf("UAPI listen error: %v", err)
 		os.Exit(ExitSetupFailed)
-		return
 	}
 
 	device := device.NewDevice(tun, conn.NewDefaultBind(), logger)
@@ -125,7 +80,7 @@ func main() {
 
 	uapi, err := ipc.UAPIListen(interfaceName, fileUAPI)
 	if err != nil {
-		logger.Errorf("Failed to listen on uapi socket: %v", err)
+		logger.Errorf("Failed to listen on UAPI socket: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -146,36 +101,38 @@ func main() {
 
 	c, err := wgctrl.New()
 	if err != nil {
-		log.Fatalf("failed to open wgctrl: %v", err)
+		logger.Errorf("Failed to create new wgctrl client: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
-	defer c.Close()
 
-	tunName, err := tun.Name()
-	if err != nil {
-		log.Fatalf("failed to get tun name: %v", err)
-	}
+	defer c.Close()
 
 	serverPrivateKey, err := wgtypes.ParseKey("sEjL0NvY8fuHpQkTCYbnItuawe5LBxjqruK6WObmJHg=")
 	if err != nil {
-		log.Fatalf("failed to generate server private key: %v", err)
+		logger.Errorf("Failed to generate server private key: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
-	fmt.Printf("Server Private Key: %s\n", serverPrivateKey.String())
+	logger.Verbosef("Server Private Key: %s\n", serverPrivateKey.String())
 
 	peerPrivateKey, err := wgtypes.ParseKey("AIwSWU9veYZ2FvEG+V/sSh3DAKF3SbXCkgUHULUuNWc=")
 	if err != nil {
-		log.Fatalf("failed to generate peer private key: %v", err)
+		logger.Errorf("Failed to generate peer private key: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
-	fmt.Printf("Peer Private Key: %s\n", peerPrivateKey.String())
-	fmt.Printf("Server Public Key: %s\n", serverPrivateKey.PublicKey().String())
+	logger.Verbosef("Peer Private Key: %s\n", peerPrivateKey.String())
+	logger.Verbosef("Server Public Key: %s\n", serverPrivateKey.PublicKey().String())
 
 	_, wildcardIpNet, err := net.ParseCIDR("0.0.0.0/0")
 	if err != nil {
-		fmt.Printf("could not parse IPNet: %v\n", err)
+		logger.Errorf("Failed to parse CIDR: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
+
 	_, peerIpNet, err := net.ParseCIDR("10.33.33.2/32")
 	if err != nil {
-		fmt.Printf("could not parse IPNet: %v\n", err)
+		logger.Errorf("Failed to parse CIDR: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
 	peer := wgtypes.PeerConfig{
@@ -187,62 +144,67 @@ func main() {
 	}
 
 	port := 3333
-	c.ConfigureDevice(tunName, wgtypes.Config{
+	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
 		ListenPort: &port,
 		PrivateKey: &serverPrivateKey,
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
+	if err != nil {
+		fmt.Errorf("Failed to configure Wireguard device: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
 
-	cmd := exec.Command("ifconfig", tunName, "inet", "10.33.33.1/32", "10.33.33.2")
+	cmd := exec.Command("ifconfig", interfaceName, "inet", "10.33.33.1/32", "10.33.33.2")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	err = cmd.Run()
 	if err != nil {
-		logger.Errorf("ifconfig error: %v. %v", err, out.String())
+		logger.Errorf("Failed to set interface address with ifconfig: %v. %v", err, out.String())
 		os.Exit(ExitSetupFailed)
-		return
 	}
 
-	fmt.Printf("interface %s created\n", tunName)
+	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	cmd = exec.Command("route", "-q", "-n", "add", "-host", "10.33.33.2", "-interface", tunName)
+	cmd = exec.Command("route", "-q", "-n", "add", "-host", "10.33.33.2", "-interface", interfaceName)
 	cmd.Stdout = &out
 	err = cmd.Run()
 	if err != nil {
-		logger.Errorf("route add error: %v. %v", err, out.String())
+		logger.Errorf("Failed to add route: %v. %v", err, out.String())
 		os.Exit(ExitSetupFailed)
-		return
 	}
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		panic(err)
+		logger.Errorf("Failed to create Docker client: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
 	ctx := context.Background()
 
 	networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
 	if err != nil {
-		panic(err)
+		logger.Errorf("Failed to list Docker networks: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
 	for _, network := range networks {
 		for _, config := range network.IPAM.Config {
 			if network.Scope == "local" {
-				fmt.Printf("adding route for %s -> %s (%s)\n", config.Subnet, tunName, network.Name)
+				logger.Verbosef("Adding route for %s -> %s (%s)\n", config.Subnet, interfaceName, network.Name)
 
-				cmd = exec.Command("route", "-q", "-n", "add", "-inet", config.Subnet, "-interface", tunName)
+				cmd = exec.Command("route", "-q", "-n", "add", "-inet", config.Subnet, "-interface", interfaceName)
 				cmd.Stdout = &out
 				err = cmd.Run()
 				if err != nil {
-					logger.Errorf("route add error: %v. %v", err, out.String())
+					logger.Errorf("Failed to add route: %v. %v", err, out.String())
 					os.Exit(ExitSetupFailed)
-					return
 				}
 			}
 		}
 	}
+
+	logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
 
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: "docker-mac-net-connect",
@@ -252,27 +214,28 @@ func main() {
 		CapAdd:      []string{"NET_ADMIN"},
 	}, nil, nil, "wireguard-setup")
 	if err != nil {
-		panic(err)
+		logger.Errorf("Failed to create container: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
-	fmt.Println("setting up wireguard on docker desktop vm")
-
-	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		panic(err)
+	err = cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	if err != nil {
+		logger.Errorf("Failed to start container: %v", err)
+		os.Exit(ExitSetupFailed)
 	}
 
-	fmt.Println("wireguard server listening")
+	logger.Verbosef("Wireguard server listening\n")
 
-	fmt.Println("docker event listening")
+	logger.Verbosef("Docker event listening\n")
 	msgs, errsChan := cli.Events(ctx, types.EventsOptions{})
 
 	go func() {
 		for {
 			select {
 			case err := <-errsChan:
-				fmt.Printf("Error: %v\n", err)
+				logger.Errorf("Error: %v\n", err)
 			case msg := <-msgs:
-				fmt.Printf("%v %v: %v\n", msg.Type, msg.Action, msg.From)
+				logger.Verbosef("%v %v: %v\n", msg.Type, msg.Action, msg.From)
 			}
 		}
 	}()
@@ -293,5 +256,5 @@ func main() {
 	uapi.Close()
 	device.Close()
 
-	logger.Verbosef("Shutting down")
+	logger.Verbosef("Shutting down\n")
 }
