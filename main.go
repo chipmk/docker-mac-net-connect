@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"ggrn.dev/docker-mac-net-connect/networkmanager"
+	"github.com/chipmk/docker-mac-net-connect/networkmanager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"

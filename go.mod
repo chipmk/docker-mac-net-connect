@@ -1,4 +1,4 @@
-module ggrn.dev/docker-mac-net-connect
+module github.com/chipmk/docker-mac-net-connect
 
 go 1.17
 
