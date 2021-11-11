@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/docker/docker/api/types"
@@ -99,6 +100,9 @@ func main() {
 
 	// Wireguard configuration
 
+	hostPeerIp := "10.33.33.1"
+	vmPeerIp := "10.33.33.2"
+
 	c, err := wgctrl.New()
 	if err != nil {
 		logger.Errorf("Failed to create new wgctrl client: %v", err)
@@ -107,46 +111,42 @@ func main() {
 
 	defer c.Close()
 
-	serverPrivateKey, err := wgtypes.ParseKey("sEjL0NvY8fuHpQkTCYbnItuawe5LBxjqruK6WObmJHg=")
+	hostPrivateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Errorf("Failed to generate server private key: %v", err)
-		os.Exit(ExitSetupFailed)
-	}
-	logger.Verbosef("Server Private Key: %s\n", serverPrivateKey.String())
-
-	peerPrivateKey, err := wgtypes.ParseKey("AIwSWU9veYZ2FvEG+V/sSh3DAKF3SbXCkgUHULUuNWc=")
-	if err != nil {
-		logger.Errorf("Failed to generate peer private key: %v", err)
+		logger.Errorf("Failed to generate host private key: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	logger.Verbosef("Peer Private Key: %s\n", peerPrivateKey.String())
-	logger.Verbosef("Server Public Key: %s\n", serverPrivateKey.PublicKey().String())
+	vmPrivateKey, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		logger.Errorf("Failed to generate VM private key: %v", err)
+		os.Exit(ExitSetupFailed)
+	}
 
 	_, wildcardIpNet, err := net.ParseCIDR("0.0.0.0/0")
 	if err != nil {
-		logger.Errorf("Failed to parse CIDR: %v", err)
+		logger.Errorf("Failed to parse wildcard CIDR: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	_, peerIpNet, err := net.ParseCIDR("10.33.33.2/32")
+	_, vmIpNet, err := net.ParseCIDR(vmPeerIp + "/32")
 	if err != nil {
-		logger.Errorf("Failed to parse CIDR: %v", err)
+		logger.Errorf("Failed to parse VM peer CIDR: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	peer := wgtypes.PeerConfig{
-		PublicKey: peerPrivateKey.PublicKey(),
+		PublicKey: vmPrivateKey.PublicKey(),
 		AllowedIPs: []net.IPNet{
 			*wildcardIpNet,
-			*peerIpNet,
+			*vmIpNet,
 		},
 	}
 
 	port := 3333
 	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
 		ListenPort: &port,
-		PrivateKey: &serverPrivateKey,
+		PrivateKey: &hostPrivateKey,
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	cmd := exec.Command("ifconfig", interfaceName, "inet", "10.33.33.1/32", "10.33.33.2")
+	cmd := exec.Command("ifconfig", interfaceName, "inet", hostPeerIp+"/32", vmPeerIp)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -165,14 +165,6 @@ func main() {
 	}
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
-
-	cmd = exec.Command("route", "-q", "-n", "add", "-host", "10.33.33.2", "-interface", interfaceName)
-	cmd.Stdout = &out
-	err = cmd.Run()
-	if err != nil {
-		logger.Errorf("Failed to add route: %v. %v", err, out.String())
-		os.Exit(ExitSetupFailed)
-	}
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -208,6 +200,13 @@ func main() {
 
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: "docker-mac-net-connect",
+		Env: []string{
+			"SERVER_PORT=" + strconv.Itoa(port),
+			"HOST_PEER_IP=" + hostPeerIp,
+			"VM_PEER_IP=" + vmPeerIp,
+			"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
+			"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
+		},
 	}, &container.HostConfig{
 		AutoRemove:  true,
 		NetworkMode: "host",

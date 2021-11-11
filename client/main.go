@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/vishvananda/netlink"
@@ -18,6 +19,42 @@ const (
 
 func main() {
 	interfaceName := "chip0"
+
+	serverPortString := os.Getenv("SERVER_PORT")
+	if serverPortString == "" {
+		fmt.Errorf("SERVER_PORT is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
+
+	serverPort, err := strconv.Atoi(serverPortString)
+	if err != nil {
+		fmt.Errorf("SERVER_PORT is not an integer\n")
+		os.Exit(ExitSetupFailed)
+	}
+
+	hostPeerIp := os.Getenv("HOST_PEER_IP")
+	if hostPeerIp == "" {
+		fmt.Errorf("HOST_PEER_IP is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
+
+	vmPeerIp := os.Getenv("VM_PEER_IP")
+	if vmPeerIp == "" {
+		fmt.Errorf("VM_PEER_IP is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
+
+	hostPublicKeyString := os.Getenv("HOST_PUBLIC_KEY")
+	if hostPublicKeyString == "" {
+		fmt.Errorf("HOST_PUBLIC_KEY is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
+
+	vmPrivateKeyString := os.Getenv("VM_PRIVATE_KEY")
+	if vmPrivateKeyString == "" {
+		fmt.Errorf("VM_PRIVATE_KEY is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
 
 	fmt.Printf("Setting up interface %s\n", interfaceName)
 
@@ -39,24 +76,25 @@ func main() {
 		}
 	}
 
-	la := netlink.NewLinkAttrs()
-	la.Name = interfaceName
+	linkAttrs := netlink.NewLinkAttrs()
+	linkAttrs.Name = interfaceName
 
-	wireguard := &netlink.Wireguard{LinkAttrs: la}
+	wireguard := &netlink.Wireguard{LinkAttrs: linkAttrs}
 	err = netlink.LinkAdd(wireguard)
 	if err != nil {
-		fmt.Printf("Could not add link %s: %v\n", la.Name, err)
+		fmt.Printf("Could not add link %s: %v\n", linkAttrs.Name, err)
 	}
 
-	ipNet, err := netlink.ParseIPNet("10.33.33.2/32")
+	vmIpNet, err := netlink.ParseIPNet(vmPeerIp + "/32")
 	if err != nil {
-		fmt.Printf("Could not parse IPNet: %v\n", err)
+		fmt.Printf("Could not parse VM peer IPNet: %v\n", err)
 	}
-	peerIpNet, err := netlink.ParseIPNet("10.33.33.1/32")
+	hostIpNet, err := netlink.ParseIPNet(hostPeerIp + "/32")
 	if err != nil {
-		fmt.Printf("Could not parse IPNet: %v\n", err)
+		fmt.Printf("Could not parse host peer IPNet: %v\n", err)
 	}
-	addr := netlink.Addr{IPNet: ipNet, Peer: peerIpNet}
+
+	addr := netlink.Addr{IPNet: vmIpNet, Peer: hostIpNet}
 	netlink.AddrAdd(wireguard, &addr)
 
 	c, err := wgctrl.New()
@@ -67,15 +105,15 @@ func main() {
 
 	defer c.Close()
 
-	clientPrivateKey, err := wgtypes.ParseKey("AIwSWU9veYZ2FvEG+V/sSh3DAKF3SbXCkgUHULUuNWc=")
+	vmPrivateKey, err := wgtypes.ParseKey(vmPrivateKeyString)
 	if err != nil {
-		fmt.Errorf("Failed to parse client private key: %v\n", err)
+		fmt.Errorf("Failed to parse VM private key: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	serverPublicKey, err := wgtypes.ParseKey("lwiX4IRjx2GECPSzBG6efx2JEIGC7fpWDYKkj2oATWI=")
+	hostPublicKey, err := wgtypes.ParseKey(hostPublicKeyString)
 	if err != nil {
-		fmt.Errorf("Failed to parse server private key: %v\n", err)
+		fmt.Errorf("Failed to parse host public key: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -98,17 +136,17 @@ func main() {
 	}
 
 	peer := wgtypes.PeerConfig{
-		PublicKey:                   serverPublicKey,
-		Endpoint:                    &net.UDPAddr{IP: ips[0], Port: 3333},
+		PublicKey:                   hostPublicKey,
+		Endpoint:                    &net.UDPAddr{IP: ips[0], Port: serverPort},
 		PersistentKeepaliveInterval: &persistentKeepaliveInterval,
 		AllowedIPs: []net.IPNet{
 			*wildcardIpNet,
-			*peerIpNet,
+			*hostIpNet,
 		},
 	}
 
 	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
-		PrivateKey: &clientPrivateKey,
+		PrivateKey: &vmPrivateKey,
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
 	if err != nil {
