@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -271,8 +272,18 @@ func setupVm(
 	hostPrivateKey wgtypes.Key,
 	vmPrivateKey wgtypes.Key,
 ) error {
+	imageName := "ghcr.io/chipmk/docker-mac-net-connect:latest"
+
+	pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	if err != nil {
+		fmt.Errorf("Failed to create container")
+		return err
+	}
+
+	io.Copy(os.Stdout, pullStream)
+
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
-		Image: "docker-mac-net-connect",
+		Image: imageName,
 		Env: []string{
 			"SERVER_PORT=" + strconv.Itoa(serverPort),
 			"HOST_PEER_IP=" + hostPeerIp,

@@ -26,8 +26,7 @@ This project just passed POC, so installation is manual. Homebrew package coming
 
 ```bash
 $ git clone https://github.com/chipmk/docker-mac-net-connect
-$ cd docker-mac-net-connect/client && docker build -t docker-mac-net-connect .
-$ cd .. && sudo go run .
+$ cd docker-mac-net-connect && sudo go run .
 ```
 
 ## How does it work?
