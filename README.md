@@ -6,27 +6,28 @@
 
 Accessing containers directly by IP (instead of port binding) can be useful and convenient.
 
-## Problem
+### Problem
 
 Docker-for-Mac works by running Linux in a VM and executing containers within that VM.
 
 Containers are accessible by IP address from the Linux VM, but not from the macOS host.
 
-## Solution
+### Solution
 
 Create a network tunnel between your macOS host and the Docker Desktop Linux VM. The tunnel is implemented using WireGuard.
 
-## Why WireGuard?
+### Why WireGuard?
 
 WireGuard is an extremely lightweight and fast VPN. It’s also built in to the Linux kernel, which means no background processes/containers are required to build the tunnel. It is the perfect tool for this application.
 
 ## Installation
 
-This project just passed POC, so installation is manual. Homebrew package coming soon.
-
 ```bash
-$ git clone https://github.com/chipmk/docker-mac-net-connect
-$ cd docker-mac-net-connect && sudo go run .
+# Install via Homebrew
+$ brew install chipmk/tap/docker-mac-net-connect
+
+# Run the service and register it to launch at boot
+$ sudo brew services start docker-mac-net-connect
 ```
 
 ## How does it work?
