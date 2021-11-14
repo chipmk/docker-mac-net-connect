@@ -272,7 +272,7 @@ func setupVm(
 	hostPrivateKey wgtypes.Key,
 	vmPrivateKey wgtypes.Key,
 ) error {
-	imageName := "ghcr.io/chipmk/docker-mac-net-connect:latest"
+	imageName := "ghcr.io/chipmk/docker-mac-net-connect/setup:latest"
 
 	pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
 	if err != nil {
