@@ -2,6 +2,48 @@
 
 > Connect directly to Docker-for-Mac containers via IP address.
 
+## Features
+
+- **Connect:** Direct network connectivity to Docker containers from macOS host (without port binding).
+- **Lightweight:** Based on WireGuard (built-in to Linux kernel).
+- **Hands-off:** Install once and forget. No need to re-configure every time you restart your Mac or Docker daemon.
+- **Bloat free:** Do one job and that job only. Acts as a "sidecar" to Docker Desktop.
+
+## Installation
+
+```bash
+# Install via Homebrew
+$ brew install chipmk/tap/docker-mac-net-connect
+
+# Run the service and register it to launch at boot
+$ sudo brew services start docker-mac-net-connect
+```
+
+## Usage
+
+After installing this tool, you can do this:
+
+```bash
+# Run an nginx container
+$ docker run --rm --name nginx -d nginx
+
+# Get the internal IP for the container
+$ docker inspect nginx --format '{{.NetworkSettings.IPAddress}}'
+172.17.0.2
+
+# Make an HTTP request directly to its IP
+$ curl -I 172.17.0.2
+HTTP/1.1 200 OK
+Server: nginx/1.21.3
+Date: Thu, 11 Nov 2021 21:00:37 GMT
+Content-Type: text/html
+Content-Length: 615
+Last-Modified: Tue, 07 Sep 2021 15:21:03 GMT
+Connection: keep-alive
+ETag: "6137835f-267"
+Accept-Ranges: bytes
+```
+
 ## Background
 
 Accessing containers directly by IP (instead of port binding) can be useful and convenient.
@@ -14,21 +56,11 @@ Containers are accessible by IP address from the Linux VM, but not from the macO
 
 ### Solution
 
-Create a minimal network tunnel between your macOS host and the Docker Desktop Linux VM. The tunnel is implemented using WireGuard.
+Create a minimal network tunnel between macOS and the Docker Desktop Linux VM. The tunnel is implemented using WireGuard.
 
 ### Why WireGuard?
 
 WireGuard is an extremely lightweight and fast VPN. It’s also built in to the Linux kernel, which means no background processes/containers are required. It is the perfect tool for this application.
-
-## Installation
-
-```bash
-# Install via Homebrew
-$ brew install chipmk/tap/docker-mac-net-connect
-
-# Run the service and register it to launch at boot
-$ sudo brew services start docker-mac-net-connect
-```
 
 ## How does it work?
 
