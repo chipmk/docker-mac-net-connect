@@ -14,11 +14,11 @@ Containers are accessible by IP address from the Linux VM, but not from the macO
 
 ### Solution
 
-Create a network tunnel between your macOS host and the Docker Desktop Linux VM. The tunnel is implemented using WireGuard.
+Create a minimal network tunnel between your macOS host and the Docker Desktop Linux VM. The tunnel is implemented using WireGuard.
 
 ### Why WireGuard?
 
-WireGuard is an extremely lightweight and fast VPN. It’s also built in to the Linux kernel, which means no background processes/containers are required to build the tunnel. It is the perfect tool for this application.
+WireGuard is an extremely lightweight and fast VPN. It’s also built in to the Linux kernel, which means no background processes/containers are required. It is the perfect tool for this application.
 
 ## Installation
 
@@ -32,9 +32,11 @@ $ sudo brew services start docker-mac-net-connect
 
 ## How does it work?
 
+![Connection Diagram](assets/connection-diagram.png)
+
 ### macOS side
 
-A lightweight customized WireGuard server runs on your macOS host and creates a virtual network interface (`utun`) that acts as the link between your Mac and the Docker Desktop Linux VM.
+A lightweight customized WireGuard server (_`docker-mac-net-connect`_) runs on your macOS host and creates a virtual network interface (`utun`) that acts as the link between your Mac and the Docker Desktop Linux VM.
 
 ### Linux VM side
 
@@ -70,6 +72,16 @@ Accept-Ranges: bytes
 ```
 
 ## FAQ
+
+### Is this secure?
+
+This tool piggybacks off of WireGuard which has gone through numerous audits and security tests (it is built-in to the Linux kernel after all). The `docker-mac-net-connect` server generates new private/public key pairs for each WireGuard peer every time it runs. No values are hard-coded.
+
+Network traffic runs directly between the macOS host and local Linux VM - no external connections are made.
+
+### Can I use this in production?
+
+This tool was designed to assist with development on macOS. Since Docker-for-Mac isn't designed for production workloads, neither is this.
 
 ### What happens if Docker Desktop restarts?
 
