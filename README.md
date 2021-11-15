@@ -114,7 +114,7 @@ Other great solutions have been created to solve this, but none of them are as t
   - Requires manually re-running a script every time the Docker VM restarts to bring the network interface back up
   - Docker network subnets have to be routed manually
 
-- **[docker-mac-network](https://github.com/tkaefer/docker-mac-network):**
+- **[docker-mac-network](https://github.com/tkaefer/docker-mac-network)**
 
   - Requires installing an OpenVPN client (ie. `Tunnelblick`)
   - Requires an OpenVPN server container to be running at all times in order to function
