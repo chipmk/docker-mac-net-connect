@@ -8,6 +8,7 @@
 - **Lightweight:** Based on WireGuard (built-in to Linux kernel).
 - **Hands-off:** Install once and forget. No need to re-configure every time you restart your Mac or Docker daemon.
 - **Automatic:** Docker networks are automatically added/removed from macOS routing table.
+- **No bloat:** Everything is handled by a single binary. No external dependencies/tools are needed.
 
 ## Installation
 
