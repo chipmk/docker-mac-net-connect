@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Connect:** Direct network connectivity to Docker containers from macOS host (without port binding).
+- **L3 connectivity:** Connect to Docker containers from macOS host (without port binding).
 - **Lightweight:** Based on WireGuard (built-in to Linux kernel).
 - **Hands-off:** Install once and forget. No need to re-configure every time you restart your Mac or Docker daemon.
 - **Bloat free:** Do one job and that job only. Acts as a "sidecar" to Docker Desktop.
@@ -16,12 +16,12 @@
 $ brew install chipmk/tap/docker-mac-net-connect
 
 # Run the service and register it to launch at boot
-$ sudo brew services start docker-mac-net-connect
+$ sudo brew services start chipmk/tap/docker-mac-net-connect
 ```
 
 ## Usage
 
-After installing this tool, you can do this:
+After installing, you will be able to do this:
 
 ```bash
 # Run an nginx container
@@ -50,9 +50,9 @@ Accessing containers directly by IP (instead of port binding) can be useful and 
 
 ### Problem
 
-Docker-for-Mac works by running Linux in a VM and executing containers within that VM.
+Unlike Docker on Linux, Docker-for-Mac does not expose container networks directly on the macOS host. Docker-for-Mac works by running a Linux VM under the hood (using [`hyperkit`](https://github.com/moby/hyperkit)) and creates containers within that VM.
 
-Containers are accessible by IP address from the Linux VM, but not from the macOS host.
+Docker-for-Mac supports connecting to containers over Layer 4 (port binding), but not Layer 3 (by IP address).
 
 ### Solution
 
@@ -103,6 +103,22 @@ ETag: "6137835f-267"
 Accept-Ranges: bytes
 ```
 
+## Other Solutions
+
+Other great solutions have been created to solve this, but none of them are as turn-key and lightweight as we wanted.
+
+- **[docker-tuntap-osx](https://github.com/AlmirKadric-Published/docker-tuntap-osx)**
+
+  - Requires installing third party `tuntap` kernel extension
+  - Requires manually re-running a script every time the Docker VM restarts to bring the network interface back up
+  - Docker network subnets have to be routed manually
+
+- **[docker-mac-network](https://github.com/tkaefer/docker-mac-network):**
+
+  - Requires installing an OpenVPN client (ie. `Tunnelblick`)
+  - Requires an OpenVPN server container to be running at all times in order to function
+  - Docker network subnets have to be routed manually
+
 ## FAQ
 
 ### Is this secure?
@@ -119,13 +135,43 @@ This tool was designed to assist with development on macOS. Since Docker-for-Mac
 
 The server detects when the Docker daemon stops and automatically reconfigures the tunnel when it starts back up.
 
-### Do you remove routes when Docker networks are removed?
+### Do you add/remove routes when Docker networks change?
 
 Yes, the server watches the Docker daemon for both network creations and deletions and will add/remove routes accordingly.
+
+For example, let's create a Docker network with subnet `172.200.0.0/16`:
+
+```bash
+# First validate that no route exists for the subnet
+sudo netstat -rnf inet | grep 172.200
+
+# Create the docker network
+$ docker network create --subnet 172.200.0.0/16 my-network
+
+# Check the routing table - a new route exists
+$ sudo netstat -rnf inet | grep 172.200
+172.200            utun0              USc          utun0
+
+# Remove the docker network
+$ docker network rm my-network
+
+# The route has been removed
+sudo netstat -rnf inet | grep 172.200
+```
 
 ### Will routes remain orphaned in the routing table if the server crashes?
 
 No, routes are tied to the `utun` device created by the server. If the server dies, the `utun` interface will disappear along with its routes.
+
+### Why does the service need to run as root?
+
+Root permissions are required by the service to:
+
+- Create a `utun` network interface
+- Configure the `utun` interface (`ifconfig`)
+- Add and remove routes in the routing table (`route`)
+
+This app tries to minimize opportunity for privilege escalation by following the principle of least privilege (PoLP). With that said, macOS has no concept of fine-grained admin privileges (ie. capabilities), so running as `sudo` is required.
 
 ## License
 
