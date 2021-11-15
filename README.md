@@ -7,7 +7,7 @@
 - **L3 connectivity:** Connect to Docker containers from macOS host (without port binding).
 - **Lightweight:** Based on WireGuard (built-in to Linux kernel).
 - **Hands-off:** Install once and forget. No need to re-configure every time you restart your Mac or Docker daemon.
-- **Bloat free:** Do one job and that job only. Acts as a "sidecar" to Docker Desktop.
+- **Automatic:** Docker networks are automatically added/removed from macOS routing table.
 
 ## Installation
 
