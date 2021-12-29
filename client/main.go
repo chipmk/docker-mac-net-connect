@@ -22,37 +22,37 @@ func main() {
 
 	serverPortString := os.Getenv("SERVER_PORT")
 	if serverPortString == "" {
-		fmt.Errorf("SERVER_PORT is not set\n")
+		fmt.Printf("SERVER_PORT is not set\n")
 		os.Exit(ExitSetupFailed)
 	}
 
 	serverPort, err := strconv.Atoi(serverPortString)
 	if err != nil {
-		fmt.Errorf("SERVER_PORT is not an integer\n")
+		fmt.Printf("SERVER_PORT is not an integer\n")
 		os.Exit(ExitSetupFailed)
 	}
 
 	hostPeerIp := os.Getenv("HOST_PEER_IP")
 	if hostPeerIp == "" {
-		fmt.Errorf("HOST_PEER_IP is not set\n")
+		fmt.Printf("HOST_PEER_IP is not set\n")
 		os.Exit(ExitSetupFailed)
 	}
 
 	vmPeerIp := os.Getenv("VM_PEER_IP")
 	if vmPeerIp == "" {
-		fmt.Errorf("VM_PEER_IP is not set\n")
+		fmt.Printf("VM_PEER_IP is not set\n")
 		os.Exit(ExitSetupFailed)
 	}
 
 	hostPublicKeyString := os.Getenv("HOST_PUBLIC_KEY")
 	if hostPublicKeyString == "" {
-		fmt.Errorf("HOST_PUBLIC_KEY is not set\n")
+		fmt.Printf("HOST_PUBLIC_KEY is not set\n")
 		os.Exit(ExitSetupFailed)
 	}
 
 	vmPrivateKeyString := os.Getenv("VM_PRIVATE_KEY")
 	if vmPrivateKeyString == "" {
-		fmt.Errorf("VM_PRIVATE_KEY is not set\n")
+		fmt.Printf("VM_PRIVATE_KEY is not set\n")
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -60,17 +60,17 @@ func main() {
 
 	links, err := netlink.LinkList()
 	if err != nil {
-		fmt.Errorf("Could not list links: %v\n", err)
+		fmt.Printf("Could not list links: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	for _, link := range links {
 		if link.Attrs().Name == interfaceName {
-			fmt.Errorf("Interface %s already exists. Removing.\n", interfaceName)
+			fmt.Printf("Interface %s already exists. Removing.\n", interfaceName)
 
 			err = netlink.LinkDel(link)
 			if err != nil {
-				fmt.Errorf("Could not delete link %s: %v\n", interfaceName, err)
+				fmt.Printf("Could not delete link %s: %v\n", interfaceName, err)
 				os.Exit(ExitSetupFailed)
 			}
 		}
@@ -99,7 +99,7 @@ func main() {
 
 	c, err := wgctrl.New()
 	if err != nil {
-		fmt.Errorf("Failed to create wgctrl client: %v\n", err)
+		fmt.Printf("Failed to create wgctrl client: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -107,31 +107,31 @@ func main() {
 
 	vmPrivateKey, err := wgtypes.ParseKey(vmPrivateKeyString)
 	if err != nil {
-		fmt.Errorf("Failed to parse VM private key: %v\n", err)
+		fmt.Printf("Failed to parse VM private key: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	hostPublicKey, err := wgtypes.ParseKey(hostPublicKeyString)
 	if err != nil {
-		fmt.Errorf("Failed to parse host public key: %v\n", err)
+		fmt.Printf("Failed to parse host public key: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	wildcardIpNet, err := netlink.ParseIPNet("0.0.0.0/0")
 	if err != nil {
-		fmt.Errorf("Failed to parse wildcard IPNet: %v\n", err)
+		fmt.Printf("Failed to parse wildcard IPNet: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	ips, err := net.LookupIP("host.docker.internal")
 	if err != nil || len(ips) == 0 {
-		fmt.Errorf("Failed to lookup IP: %v\n", err)
+		fmt.Printf("Failed to lookup IP: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	persistentKeepaliveInterval, err := time.ParseDuration("25s")
 	if err != nil {
-		fmt.Errorf("Failed to parse duration: %v\n", err)
+		fmt.Printf("Failed to parse duration: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -150,13 +150,13 @@ func main() {
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
 	if err != nil {
-		fmt.Errorf("Failed to configure wireguard device: %v\n", err)
+		fmt.Printf("Failed to configure wireguard device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	err = netlink.LinkSetUp(wireguard)
 	if err != nil {
-		fmt.Errorf("Failed to set wireguard link to up: %v\n", err)
+		fmt.Printf("Failed to set wireguard link to up: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 }
