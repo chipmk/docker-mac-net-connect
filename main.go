@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chipmk/docker-mac-net-connect/networkmanager"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -24,6 +23,8 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
+	"github.com/chipmk/docker-mac-net-connect/networkmanager"
 )
 
 const (
@@ -297,15 +298,13 @@ func setupVm(
 		CapAdd:      []string{"NET_ADMIN"},
 	}, nil, nil, "wireguard-setup")
 	if err != nil {
-		fmt.Errorf("Failed to create container")
-		return err
+		return fmt.Errorf("failed to create container: %w", err)
 	}
 
 	// Run container to completion
 	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 	if err != nil {
-		fmt.Errorf("Failed to start container")
-		return err
+		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	return nil
