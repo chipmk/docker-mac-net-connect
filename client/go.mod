@@ -3,6 +3,7 @@ module github.com/chipmk/docker-mac-net-connect/client
 go 1.17
 
 require (
+	github.com/coreos/go-iptables v0.6.0
 	github.com/vishvananda/netlink v1.1.1-0.20211101163509-b10eb8fe5cf6
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20211109202428-0073765f69ba
 )

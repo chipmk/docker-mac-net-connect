@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/coreos/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -157,6 +158,26 @@ func main() {
 	err = netlink.LinkSetUp(wireguard)
 	if err != nil {
 		fmt.Printf("Failed to set wireguard link to up: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	ipt, err := iptables.New()
+	if err != nil {
+		fmt.Printf("Failed to create new iptables client: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	// Add iptables NAT rule to translate incoming packet's
+	// source IP to the respective Docker network interface IP.
+	// Required to route reply packets back through correct
+	// container interface.
+	err = ipt.AppendUnique(
+		"nat", "POSTROUTING",
+		"-s", hostPeerIp,
+		"-j", "MASQUERADE",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add iptables nat rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 }
