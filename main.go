@@ -25,6 +25,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
 	"github.com/chipmk/docker-mac-net-connect/networkmanager"
+	"github.com/chipmk/docker-mac-net-connect/version"
 )
 
 const (
@@ -50,6 +51,8 @@ func main() {
 		}
 		return device.LogLevelVerbose
 	}()
+
+	fmt.Printf("docker-mac-net-connect version '%s'\n", version.Version)
 
 	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
@@ -273,7 +276,7 @@ func setupVm(
 	hostPrivateKey wgtypes.Key,
 	vmPrivateKey wgtypes.Key,
 ) error {
-	imageName := "ghcr.io/chipmk/docker-mac-net-connect/setup:latest"
+	imageName := fmt.Sprintf("ghcr.io/chipmk/docker-mac-net-connect/setup:%s", version.Version)
 
 	pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
 	if err != nil {
