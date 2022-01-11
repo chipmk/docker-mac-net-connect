@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
@@ -313,6 +314,28 @@ func setupVm(
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
+
+	func() error {
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+			ShowStdout: true,
+			ShowStderr: true,
+			Follow:     true,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to get logs for container %s: %w", resp.ID, err)
+		}
+
+		defer reader.Close()
+
+		_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}()
+
+	fmt.Println("Setup container complete")
 
 	return nil
 }

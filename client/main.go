@@ -57,8 +57,6 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	fmt.Printf("Setting up interface %s\n", interfaceName)
-
 	links, err := netlink.LinkList()
 	if err != nil {
 		fmt.Printf("Could not list links: %v\n", err)
@@ -80,6 +78,8 @@ func main() {
 	linkAttrs := netlink.NewLinkAttrs()
 	linkAttrs.Name = interfaceName
 
+	fmt.Printf("Creating WireGuard interface %s\n", interfaceName)
+
 	wireguard := &netlink.Wireguard{LinkAttrs: linkAttrs}
 	err = netlink.LinkAdd(wireguard)
 	if err != nil {
@@ -94,6 +94,8 @@ func main() {
 	if err != nil {
 		fmt.Printf("Could not parse host peer IPNet: %v\n", err)
 	}
+
+	fmt.Println("Assigning IP to WireGuard interface")
 
 	addr := netlink.Addr{IPNet: vmIpNet, Peer: hostIpNet}
 	netlink.AddrAdd(wireguard, &addr)
@@ -146,6 +148,8 @@ func main() {
 		},
 	}
 
+	fmt.Println("Configuring WireGuard device")
+
 	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
 		PrivateKey: &vmPrivateKey,
 		Peers:      []wgtypes.PeerConfig{peer},
@@ -166,6 +170,8 @@ func main() {
 		fmt.Printf("Failed to create new iptables client: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	fmt.Println("Adding iptables NAT rule for host WireGuard IP")
 
 	// Add iptables NAT rule to translate incoming packet's
 	// source IP to the respective Docker network interface IP.
