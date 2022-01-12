@@ -278,13 +278,17 @@ func setupVm(
 ) error {
 	imageName := fmt.Sprintf("%s:%s", version.SetupImage, version.Version)
 
-	pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+	_, _, err := dockerCli.ImageInspectWithRaw(ctx, imageName)
 	if err != nil {
-		fmt.Errorf("Failed to create container")
-		return err
-	}
+		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-	io.Copy(os.Stdout, pullStream)
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to pull setup image: %w", err)
+		}
+
+		io.Copy(os.Stdout, pullStream)
+	}
 
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
