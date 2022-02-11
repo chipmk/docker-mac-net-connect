@@ -3,6 +3,12 @@ module github.com/chipmk/docker-mac-net-connect
 go 1.17
 
 require (
+	github.com/docker/docker v20.10.12+incompatible
+	golang.zx2c4.com/wireguard v0.0.0-20211106133050-23d4e52ac97f
+	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20211027115401-c9b1ec1aa6d8
+)
+
+require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/Microsoft/hcsshim v0.8.23 // indirect
 	github.com/bits-and-blooms/bitset v1.2.0 // indirect
@@ -13,7 +19,6 @@ require (
 	github.com/containerd/ttrpc v1.1.0 // indirect
 	github.com/containerd/typeurl v1.0.2 // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/docker/docker v20.10.10+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
 	github.com/docker/go-units v0.4.0 // indirect
@@ -45,8 +50,6 @@ require (
 	golang.org/x/text v0.3.6 // indirect
 	golang.zx2c4.com/go118/netip v0.0.0-20211106132939-9d41d90554dd // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
-	golang.zx2c4.com/wireguard v0.0.0-20211106133050-23d4e52ac97f // indirect
-	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20211027115401-c9b1ec1aa6d8 // indirect
 	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a // indirect
 	google.golang.org/grpc v1.42.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
