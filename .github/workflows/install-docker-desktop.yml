@@ -1,0 +1,14 @@
+name: install-docker-desktop
+on: [push]
+jobs:
+  install-docker-desktop:
+    runs-on: macos-latest
+    steps:
+      - name: Install Docker Desktop
+        run: |
+          brew update
+          brew install --cask docker
+          open -a "Docker"
+      - name: Test Docker
+        run: |
+          docker run hello-world
