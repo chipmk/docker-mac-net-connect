@@ -10,6 +10,9 @@
 - **Automatic:** Docker networks are automatically added/removed from macOS routing table.
 - **No bloat:** Everything is handled by a single binary. No external dependencies/tools are needed.
 
+## Requirements
+You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058).
+
 ## Installation
 
 ```bash
