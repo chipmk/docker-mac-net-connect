@@ -60,13 +60,13 @@ func main() {
 
 	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("Failed to create TUN device: %v", err)
+		fmt.Println(fmt.Sprintf("Error during tunnel setup: %q", fmt.Errorf("failed to create TUN device: %v", err)))
 		os.Exit(ExitSetupFailed)
 	}
 
 	interfaceName, err := tun.Name()
 	if err != nil {
-		fmt.Errorf("Failed to get TUN device name: %v", err)
+		fmt.Errorf("failed to get TUN device name: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -91,7 +91,7 @@ func main() {
 
 	uapi, err := ipc.UAPIListen(interfaceName, fileUAPI)
 	if err != nil {
-		logger.Errorf("Failed to listen on UAPI socket: %v", err)
+		logger.Errorf("failed to listen on UAPI socket: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -115,7 +115,7 @@ func main() {
 
 	c, err := wgctrl.New()
 	if err != nil {
-		logger.Errorf("Failed to create new wgctrl client: %v", err)
+		logger.Errorf("failed to create new wgctrl client: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -123,25 +123,25 @@ func main() {
 
 	hostPrivateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Errorf("Failed to generate host private key: %v", err)
+		logger.Errorf("failed to generate host private key: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	vmPrivateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
-		logger.Errorf("Failed to generate VM private key: %v", err)
+		logger.Errorf("failed to generate VM private key: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	_, wildcardIpNet, err := net.ParseCIDR("0.0.0.0/0")
 	if err != nil {
-		logger.Errorf("Failed to parse wildcard CIDR: %v", err)
+		logger.Errorf("failed to parse wildcard CIDR: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	_, vmIpNet, err := net.ParseCIDR(vmPeerIp + "/32")
 	if err != nil {
-		logger.Errorf("Failed to parse VM peer CIDR: %v", err)
+		logger.Errorf("failed to parse VM peer CIDR: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -160,7 +160,7 @@ func main() {
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
 	if err != nil {
-		logger.Errorf("Failed to configure Wireguard device: %v\n", err)
+		logger.Errorf("failed to configure Wireguard device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -168,7 +168,7 @@ func main() {
 
 	_, stderr, err := networkManager.SetInterfaceAddress(hostPeerIp, vmPeerIp, interfaceName)
 	if err != nil {
-		logger.Errorf("Failed to set interface address with ifconfig: %v. %v", err, stderr)
+		logger.Errorf("failed to set interface address with ifconfig: %v. %v", err, stderr)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -176,12 +176,12 @@ func main() {
 
 	dockerCli, err := command.NewDockerCli()
 	if err != nil {
-		logger.Errorf("Failed to create docker cli client: %v. %v", err, stderr)
+		logger.Errorf("failed to create docker cli client: %v. %v", err, stderr)
 		os.Exit(ExitSetupFailed)
 	}
 
 	if err := dockerCli.Initialize(flags.NewClientOptions()); err != nil {
-		logger.Errorf("Failed to initialize docker cli client: %v. %v", err, stderr)
+		logger.Errorf("failed to initialize docker cli client: %v. %v", err, stderr)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -192,7 +192,7 @@ func main() {
 
 		md, err := dockerCli.ContextStore().GetMetadata(dockerCli.CurrentContext())
 		if err != nil {
-			logger.Errorf("Failed to get docker context endpoint: %v. %v", err, stderr)
+			logger.Errorf("failed to get docker context endpoint: %v. %v", err, stderr)
 			os.Exit(ExitSetupFailed)
 		}
 		typed, ok := md.Endpoints[docker.DockerEndpoint].(docker.EndpointMeta)
@@ -207,7 +207,7 @@ func main() {
 
 	dockerApiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(dockerHost))
 	if err != nil {
-		logger.Errorf("Failed to create Docker client: %v", err)
+		logger.Errorf("failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -221,14 +221,14 @@ func main() {
 
 			err = setupVm(ctx, dockerApiClient, port, hostPeerIp, vmPeerIp, hostPrivateKey, vmPrivateKey)
 			if err != nil {
-				logger.Errorf("Failed to setup VM: %v", err)
+				logger.Errorf("failed to setup VM: %v", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
 			networks, err := dockerApiClient.NetworkList(ctx, types.NetworkListOptions{})
 			if err != nil {
-				logger.Errorf("Failed to list Docker networks: %v", err)
+				logger.Errorf("failed to list Docker networks: %v", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -257,7 +257,7 @@ func main() {
 					if msg.Type == "network" && msg.Action == "create" {
 						network, err := dockerApiClient.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
 						if err != nil {
-							logger.Errorf("Failed to inspect new Docker network: %v", err)
+							logger.Errorf("failed to inspect new Docker network: %v", err)
 							continue
 						}
 
