@@ -12,6 +12,9 @@ run-go::
 build-go::
 	go build -ldflags "-s -w ${LD_FLAGS}" ${PROJECT}
 
+install-go::
+	go install -ldflags "-s -w ${LD_FLAGS}" ${PROJECT}
+
 build-docker::
 	docker build -t ${SETUP_IMAGE}:${VERSION} ./client
 
