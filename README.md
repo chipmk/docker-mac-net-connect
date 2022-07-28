@@ -13,6 +13,12 @@
 ## Requirements
 You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058).
 
+Alternatively, this solution also supports LimaVM, when using it as a docker context through docker-cli.
+Just make sure you set the right docker context in the cli accordingly. Otherwise the default docker socket is used.
+See:
+* https://github.com/lima-vm/lima
+* https://github.com/abiosoft/colima
+
 ## Installation
 
 ```bash
