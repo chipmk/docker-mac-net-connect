@@ -2,7 +2,7 @@ FROM golang:1.17 as build
 
 WORKDIR /build
 
-COPY go.* .
+COPY go.* ./
 
 RUN go mod download
 
@@ -12,8 +12,9 @@ RUN go build -o app main.go
 
 FROM debian:11-slim
 
-RUN apt-get update && apt-get install -y \
-  iptables
+RUN apt-get update && \
+    apt-get install -y iptables && \
+    update-alternatives --set iptables /usr/sbin/iptables-legacy
 
 COPY --from=build /build/app .
 
