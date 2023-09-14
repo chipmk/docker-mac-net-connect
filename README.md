@@ -11,6 +11,7 @@
 - **No bloat:** Everything is handled by a single binary. No external dependencies/tools are needed.
 
 ## Requirements
+
 You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058).
 
 ## Installation
@@ -21,6 +22,16 @@ $ brew install chipmk/tap/docker-mac-net-connect
 
 # Run the service and register it to launch at boot
 $ sudo brew services start chipmk/tap/docker-mac-net-connect
+```
+
+### `GOPROXY` support
+
+This Homebrew formulae is built using `go`. When Homebrew installs a formulae, it strips away local environment variables and configuration, including configuration set using `go env`.
+
+Some users require changing `GOPROXY` due to firewalls. This formulae adds special support for `GOPROXY` using `HOMEBREW_GOPROXY`:
+
+```bash
+HOMEBREW_GOPROXY=https://my-proxy-url brew install chipmk/tap/docker-mac-net-connect
 ```
 
 ## Usage
