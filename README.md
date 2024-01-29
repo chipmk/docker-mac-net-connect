@@ -197,7 +197,7 @@ This app tries to minimize opportunity for privilege escalation by following the
 sudo brew services stop chipmk/tap/docker-mac-net-connect
 sudo docker-mac-net-connect
 ```
-This will show any debug messages that may be being generated.
+This will show any debug messages that may indicate what is causing your issue.
 
 
 ## License
