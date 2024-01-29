@@ -188,6 +188,18 @@ Root permissions are required by the service to:
 
 This app tries to minimize opportunity for privilege escalation by following the principle of least privilege (PoLP). With that said, macOS has no concept of fine-grained admin privileges (ie. capabilities), so running as `sudo` is required.
 
+
+## Troubleshooting
+
+- If things stop working after upgrading Docker, you may need to do a clean uninstall / reinstall of Docker Desktop. See here for uninstall instructions: [Uninstall Docker](https://docs.docker.com/desktop/uninstall/)
+- For general troubleshooting, try running the command directly rather than as a service: (From e.g. /opt/homebrew/Cellar/docker-mac-net-connect/v{*.*}/bin/):
+```
+sudo brew services stop chipmk/tap/docker-mac-net-connect
+sudo docker-mac-net-connect
+```
+This will show any debug messages that may be being generated.
+
+
 ## License
 
 MIT
