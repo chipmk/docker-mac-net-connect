@@ -1,6 +1,6 @@
 PROJECT         := github.com/chipmk/docker-mac-net-connect
-SETUP_IMAGE     := ghcr.io/chipmk/docker-mac-net-connect/setup
-VERSION         := $(shell git describe --tags)
+SETUP_IMAGE     ?= ghcr.io/chipmk/docker-mac-net-connect/setup
+VERSION         ?= $(shell git describe --tags)
 LD_FLAGS        := -X ${PROJECT}/version.Version=${VERSION} -X ${PROJECT}/version.SetupImage=${SETUP_IMAGE}
 
 run:: build-docker run-go
@@ -11,6 +11,9 @@ run-go::
 
 build-go::
 	go build -ldflags "-s -w ${LD_FLAGS}" ${PROJECT}
+
+install-go::
+	go install -ldflags "-s -w ${LD_FLAGS}" ${PROJECT}
 
 build-docker::
 	docker build -t ${SETUP_IMAGE}:${VERSION} ./client
