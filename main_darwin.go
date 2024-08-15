@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
@@ -283,7 +284,7 @@ func setupVm(
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
@@ -310,13 +311,13 @@ func setupVm(
 	}
 
 	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
