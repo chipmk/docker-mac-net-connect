@@ -186,4 +186,29 @@ func main() {
 		fmt.Printf("Failed to add iptables nat rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	fmt.Println("Adding iptables filter rules for WireGuard interface")
+
+	// Add iptables filter rules to always accept traffic between
+	// a container and the Wireguard interface.
+	// Required to connect to `internal` Docker networks.
+	err = ipt.AppendUnique(
+		"filter", "DOCKER-USER",
+		"-o", interfaceName,
+		"-j", "ACCEPT",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	err = ipt.AppendUnique(
+		"filter", "DOCKER-USER",
+		"-i", interfaceName,
+		"-j", "ACCEPT",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
 }
