@@ -1,4 +1,4 @@
-PROJECT         := github.com/tdeebswihart/docker-mac-net-connect
+PROJECT         := $(shell head -n 1 go.mod | cut -d ' ' -f2)
 SETUP_IMAGE     := ghcr.io/tdeebswihart/docker-mac-net-connect/setup
 VERSION         := $(shell git describe --tags)
 LD_FLAGS        := -X ${PROJECT}/version.Version=${VERSION} -X ${PROJECT}/version.SetupImage=${SETUP_IMAGE}
