@@ -18,10 +18,10 @@ You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://
 
 ```bash
 # Install via Homebrew
-$ brew install chipmk/tap/docker-mac-net-connect
+$ brew install tdeebswihart/tap/docker-mac-net-connect
 
 # Run the service and register it to launch at boot
-$ sudo brew services start chipmk/tap/docker-mac-net-connect
+$ sudo brew services start tdeebswihart/tap/docker-mac-net-connect
 ```
 
 ### `GOPROXY` support
@@ -31,7 +31,7 @@ This Homebrew formulae is built using `go`. When Homebrew installs a formulae, i
 Some users require changing `GOPROXY` due to firewalls. This formulae adds special support for `GOPROXY` using `HOMEBREW_GOPROXY`:
 
 ```bash
-HOMEBREW_GOPROXY=https://my-proxy-url brew install chipmk/tap/docker-mac-net-connect
+HOMEBREW_GOPROXY=https://my-proxy-url brew install tdeebswihart/tap/docker-mac-net-connect
 ```
 
 ## Usage
@@ -194,7 +194,7 @@ This app tries to minimize opportunity for privilege escalation by following the
 - If things stop working after upgrading Docker, you may need to do a clean uninstall / reinstall of Docker Desktop. See here for uninstall instructions: [Uninstall Docker](https://docs.docker.com/desktop/uninstall/)
 - For general troubleshooting, try running the command directly rather than as a service: (From e.g. /opt/homebrew/Cellar/docker-mac-net-connect/v{*.*}/bin/):
 ```
-sudo brew services stop chipmk/tap/docker-mac-net-connect
+sudo brew services stop tdeebswihart/tap/docker-mac-net-connect
 sudo docker-mac-net-connect
 ```
 This will show any debug messages that may indicate what is causing your issue.
