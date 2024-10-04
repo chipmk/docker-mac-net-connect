@@ -26,8 +26,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
-	"github.com/chipmk/docker-mac-net-connect/networkmanager"
-	"github.com/chipmk/docker-mac-net-connect/version"
+	"github.com/tdeebswihart/docker-mac-net-connect/networkmanager"
+	"github.com/tdeebswihart/docker-mac-net-connect/version"
 )
 
 const (
