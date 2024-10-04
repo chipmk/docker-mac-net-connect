@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
@@ -40,6 +41,11 @@ const (
 	ENV_WG_PROCESS_FOREGROUND = "WG_PROCESS_FOREGROUND"
 )
 
+func fail(msg string, args ...any) {
+	fmt.Fprintf(os.Stderr, msg, args...)
+	os.Exit(ExitSetupFailed)
+}
+
 func main() {
 	logLevel := func() int {
 		switch os.Getenv("LOG_LEVEL") {
@@ -52,26 +58,29 @@ func main() {
 		}
 		return device.LogLevelVerbose
 	}()
+	logger := device.NewLogger(
+		logLevel,
+		"(UNKNOWN)",
+	)
 
-	fmt.Printf("docker-mac-net-connect version '%s'\n", version.Version)
+	logger.Verbosef("docker-mac-net-connect version '%s'", version.Version)
 
 	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("Failed to create TUN device: %v", err)
+		logger.Errorf("Failed to create TUN device: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	interfaceName, err := tun.Name()
 	if err != nil {
-		fmt.Errorf("Failed to get TUN device name: %v", err)
+		logger.Errorf("Failed to get TUN device name: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	logger := device.NewLogger(
+	logger = device.NewLogger(
 		logLevel,
 		fmt.Sprintf("(%s) ", interfaceName),
 	)
-
 	fileUAPI, err := ipc.UAPIOpen(interfaceName)
 
 	if err != nil {
@@ -283,7 +292,7 @@ func setupVm(
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
@@ -310,13 +319,13 @@ func setupVm(
 	}
 
 	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
