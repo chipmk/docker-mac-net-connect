@@ -1,4 +1,4 @@
-FROM golang:1.17 as build
+FROM golang:1.23 AS build
 
 WORKDIR /build
 
@@ -10,7 +10,7 @@ COPY . .
 
 RUN go build -o app main.go
 
-FROM debian:11-slim
+FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y \
   iptables
