@@ -24,6 +24,16 @@ $ brew install chipmk/tap/docker-mac-net-connect
 $ sudo brew services start chipmk/tap/docker-mac-net-connect
 ```
 
+## Usage
+Starting from Docker Desktop `v4.39.0` you need to add the following driver configuration to your `docker-compose.yml` network definition (replacing `default` with your network if you customised the networks name)
+
+```yaml
+networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: nat-unprotected
+```
+
 ### `GOPROXY` support
 
 This Homebrew formulae is built using `go`. When Homebrew installs a formulae, it strips away local environment variables and configuration, including configuration set using `go env`.
