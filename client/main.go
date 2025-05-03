@@ -186,4 +186,21 @@ func main() {
 		fmt.Printf("Failed to add iptables nat rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	// Insert or replace iptables accept rule for host peer IP address,
+	// allowing only tunnel packets to be forwarded and routed
+	err = ipt.DeleteIfExists("filter", "DOCKER",
+		"-s", hostPeerIp,
+		"-j", "ACCEPT")
+	if err != nil {
+		fmt.Printf("Failed to delete iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+	err = ipt.Insert("filter", "DOCKER", 1,
+		"-s", hostPeerIp,
+		"-j", "ACCEPT")
+	if err != nil {
+		fmt.Printf("Failed to insert iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
 }
