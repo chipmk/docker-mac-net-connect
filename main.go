@@ -209,7 +209,7 @@ func main() {
 		for {
 			logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
 
-			dockerCIDRs := networkManager.GetDockerCIDRs()
+			dockerCIDRs := networkManager.GetDockerCIDRs(ctx, cli)
 			if len(dockerCIDRs) == 0 {
 				logger.Verbosef("No Docker networks found, skipping VM setup\n")
 				time.Sleep(5 * time.Second)

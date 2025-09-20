@@ -2,10 +2,12 @@ package networkmanager
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/client"
 )
 
 type NetworkManager struct {
@@ -97,9 +99,16 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network network.Inspe
 	delete(manager.DockerNetworks, network.ID)
 }
 
-func (manager *NetworkManager) GetDockerCIDRs() []string {
+func (manager *NetworkManager) GetDockerCIDRs(ctx context.Context, cli *client.Client) []string {
 	var cidrs []string
-	for _, net := range manager.DockerNetworks {
+
+	networks, err := cli.NetworkList(ctx, network.ListOptions{})
+	if err != nil {
+		fmt.Printf("Failed to list Docker networks: %v\n", err)
+		return cidrs
+	}
+
+	for _, net := range networks {
 		if net.Scope == "local" {
 			for _, config := range net.IPAM.Config {
 				if config.Subnet != "" {
