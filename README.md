@@ -1,5 +1,7 @@
 # Docker Mac Net Connect
 
+It is a forked project. All credits to https://github.com/chipmk/docker-mac-net-connect.
+
 > Connect directly to Docker-for-Mac containers via IP address.
 
 ## Features
@@ -12,7 +14,7 @@
 
 ## Requirements
 
-You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058).
+You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/avoidik/docker-mac-net-connect/issues/10#issuecomment-1146662058).
 
 ## Installation
 

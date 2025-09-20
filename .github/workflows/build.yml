@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build multi-arch Docker image
+      run: |
+        VERSION=$(git describe --tags --always)
+        docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/avoidik/docker-mac-net-connect/setup:${VERSION} ./client
+
+  build-go:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [darwin]
+        goarch: [amd64, arm64]
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Build Go project for ${{ matrix.goos }}/${{ matrix.goarch }}
+      run: |
+        VERSION=$(git describe --tags --always)
+        LD_FLAGS="-s -w -X github.com/avoidik/docker-mac-net-connect/version.Version=${VERSION} -X github.com/avoidik/docker-mac-net-connect/version.SetupImage=ghcr.io/avoidik/docker-mac-net-connect/setup"
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -ldflags "${LD_FLAGS}" -o docker-mac-net-connect-${{ matrix.goos }}-${{ matrix.goarch }} github.com/avoidik/docker-mac-net-connect
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-mac-net-connect-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: docker-mac-net-connect-${{ matrix.goos }}-${{ matrix.goarch }}
