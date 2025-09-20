@@ -47,14 +47,16 @@ const (
 func main() {
 	var hostPeerIp string
 	var vmPeerIp string
-	var interfaceName string
+	var interfaceNameWg string
+	var portNumWg int
 	var dockerSocket string
 	var enableDockerFilter bool
 	var bridgeIp string
 	var bridgeInterface string
 	flag.StringVar(&hostPeerIp, "host-peer-ip", "10.33.33.1", "Host peer IP address")
 	flag.StringVar(&vmPeerIp, "vm-peer-ip", "10.33.33.2", "VM peer IP address")
-	flag.StringVar(&interfaceName, "interface-name", "chip0", "WireGuard interface name")
+	flag.StringVar(&interfaceNameWg, "interface-name", "chip0", "WireGuard interface name")
+	flag.IntVar(&portNumWg, "port-number", 3333, "WireGuard port number")
 	flag.StringVar(&dockerSocket, "docker-socket", "unix:///var/run/docker.sock", "Docker socket path")
 	flag.BoolVar(&enableDockerFilter, "enable-docker-filter", true, "Enable iptables filter rule for Docker chain")
 	flag.StringVar(&bridgeIp, "bridge-ip", "", "Bridge IP address for FORWARD iptables rules")
@@ -87,7 +89,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	interfaceName, err = tun.Name()
+	interfaceName, err := tun.Name()
 	if err != nil {
 		fmt.Printf("Failed to get TUN device name: %v\n", err)
 		os.Exit(ExitSetupFailed)
@@ -173,9 +175,8 @@ func main() {
 		},
 	}
 
-	port := 3333
 	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
-		ListenPort: &port,
+		ListenPort: &portNumWg,
 		PrivateKey: &hostPrivateKey,
 		Peers:      []wgtypes.PeerConfig{peer},
 	})
@@ -215,7 +216,7 @@ func main() {
 				continue
 			}
 
-			err = setupVm(ctx, cli, port, hostPeerIp, vmPeerIp, interfaceName, dockerCIDRs, enableDockerFilter, bridgeIp, bridgeInterface, hostPrivateKey, vmPrivateKey)
+			err = setupVm(ctx, cli, portNumWg, hostPeerIp, vmPeerIp, interfaceNameWg, dockerCIDRs, enableDockerFilter, bridgeIp, bridgeInterface, hostPrivateKey, vmPrivateKey)
 			if err != nil {
 				logger.Errorf("Failed to setup VM: %v", err)
 				time.Sleep(5 * time.Second)
