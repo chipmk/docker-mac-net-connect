@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/network"
 )
 
 type NetworkManager struct {
-	DockerNetworks map[string]types.NetworkResource
+	DockerNetworks map[string]network.Inspect
 }
 
 func New() NetworkManager {
 	return NetworkManager{
-		DockerNetworks: map[string]types.NetworkResource{},
+		DockerNetworks: map[string]network.Inspect{},
 	}
 }
 
@@ -66,7 +66,7 @@ func (manager *NetworkManager) DeleteRoute(net string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-func (manager *NetworkManager) ProcessDockerNetworkCreate(network types.NetworkResource, iface string) {
+func (manager *NetworkManager) ProcessDockerNetworkCreate(network network.Inspect, iface string) {
 	manager.DockerNetworks[network.ID] = network
 
 	for _, config := range network.IPAM.Config {
@@ -76,13 +76,13 @@ func (manager *NetworkManager) ProcessDockerNetworkCreate(network types.NetworkR
 			_, stderr, err := manager.AddRoute(config.Subnet, iface)
 
 			if err != nil {
-				fmt.Errorf("Failed to add route: %v. %v\n", err, stderr)
+				fmt.Printf("Failed to add route: %v. %v\n", err, stderr)
 			}
 		}
 	}
 }
 
-func (manager *NetworkManager) ProcessDockerNetworkDestroy(network types.NetworkResource) {
+func (manager *NetworkManager) ProcessDockerNetworkDestroy(network network.Inspect) {
 	for _, config := range network.IPAM.Config {
 		if network.Scope == "local" {
 			fmt.Printf("Deleting route for %s (%s)\n", config.Subnet, network.Name)
@@ -90,7 +90,7 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network types.Network
 			_, stderr, err := manager.DeleteRoute(config.Subnet)
 
 			if err != nil {
-				fmt.Errorf("Failed to delete route: %v. %v\n", err, stderr)
+				fmt.Printf("Failed to delete route: %v. %v\n", err, stderr)
 			}
 		}
 	}

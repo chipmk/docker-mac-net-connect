@@ -13,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
@@ -57,13 +59,13 @@ func main() {
 
 	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("Failed to create TUN device: %v", err)
+		fmt.Printf("Failed to create TUN device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	interfaceName, err := tun.Name()
 	if err != nil {
-		fmt.Errorf("Failed to get TUN device name: %v", err)
+		fmt.Printf("Failed to get TUN device name: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -192,7 +194,7 @@ func main() {
 				continue
 			}
 
-			networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+			networks, err := cli.NetworkList(ctx, network.ListOptions{})
 			if err != nil {
 				logger.Errorf("Failed to list Docker networks: %v", err)
 				time.Sleep(5 * time.Second)
@@ -205,7 +207,7 @@ func main() {
 
 			logger.Verbosef("Watching Docker events\n")
 
-			msgs, errsChan := cli.Events(ctx, types.EventsOptions{
+			msgs, errsChan := cli.Events(ctx, events.ListOptions{
 				Filters: filters.NewArgs(
 					filters.Arg("type", "network"),
 					filters.Arg("event", "create"),
@@ -221,7 +223,7 @@ func main() {
 				case msg := <-msgs:
 					// Add routes when new Docker networks are created
 					if msg.Type == "network" && msg.Action == "create" {
-						network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
+						network, err := cli.NetworkInspect(ctx, msg.Actor.ID, network.InspectOptions{})
 						if err != nil {
 							logger.Errorf("Failed to inspect new Docker network: %v", err)
 							continue
@@ -279,11 +281,11 @@ func setupVm(
 ) error {
 	imageName := fmt.Sprintf("%s:%s", version.SetupImage, version.Version)
 
-	_, _, err := dockerCli.ImageInspectWithRaw(ctx, imageName)
+	_, err := dockerCli.ImageInspect(ctx, imageName)
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
@@ -310,13 +312,13 @@ func setupVm(
 	}
 
 	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
