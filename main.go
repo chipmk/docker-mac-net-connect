@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,6 +45,28 @@ const (
 )
 
 func main() {
+	var hostPeerIp string
+	var vmPeerIp string
+	var interfaceName string
+	var dockerSocket string
+	var enableDockerFilter bool
+	var bridgeIp string
+	var bridgeInterface string
+	flag.StringVar(&hostPeerIp, "host-peer-ip", "10.33.33.1", "Host peer IP address")
+	flag.StringVar(&vmPeerIp, "vm-peer-ip", "10.33.33.2", "VM peer IP address")
+	flag.StringVar(&interfaceName, "interface-name", "chip0", "WireGuard interface name")
+	flag.StringVar(&dockerSocket, "docker-socket", "unix:///var/run/docker.sock", "Docker socket path")
+	flag.BoolVar(&enableDockerFilter, "enable-docker-filter", true, "Enable iptables filter rule for Docker chain")
+	flag.StringVar(&bridgeIp, "bridge-ip", "", "Bridge IP address for FORWARD iptables rules")
+	flag.StringVar(&bridgeInterface, "bridge-interface", "col0", "Bridge interface name for iptables rules (requires bridge-ip)")
+	flag.Parse()
+
+	// Validate bridge interface parameter
+	if bridgeIp != "" && bridgeInterface == "" {
+		fmt.Printf("Error: bridge-interface must be specified when bridge-ip is set\n")
+		os.Exit(ExitSetupFailed)
+	}
+
 	logLevel := func() int {
 		switch os.Getenv("LOG_LEVEL") {
 		case "verbose", "debug":
@@ -63,7 +87,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	interfaceName, err := tun.Name()
+	interfaceName, err = tun.Name()
 	if err != nil {
 		fmt.Printf("Failed to get TUN device name: %v\n", err)
 		os.Exit(ExitSetupFailed)
@@ -108,9 +132,6 @@ func main() {
 	logger.Verbosef("UAPI listener started")
 
 	// Wireguard configuration
-
-	hostPeerIp := "10.33.33.1"
-	vmPeerIp := "10.33.33.2"
 
 	c, err := wgctrl.New()
 	if err != nil {
@@ -173,7 +194,7 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(dockerSocket))
 	if err != nil {
 		logger.Errorf("Failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
@@ -187,7 +208,14 @@ func main() {
 		for {
 			logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
 
-			err = setupVm(ctx, cli, port, hostPeerIp, vmPeerIp, hostPrivateKey, vmPrivateKey)
+			dockerCIDRs := networkManager.GetDockerCIDRs()
+			if len(dockerCIDRs) == 0 {
+				logger.Verbosef("No Docker networks found, skipping VM setup\n")
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			err = setupVm(ctx, cli, port, hostPeerIp, vmPeerIp, interfaceName, dockerCIDRs, enableDockerFilter, bridgeIp, bridgeInterface, hostPrivateKey, vmPrivateKey)
 			if err != nil {
 				logger.Errorf("Failed to setup VM: %v", err)
 				time.Sleep(5 * time.Second)
@@ -276,6 +304,11 @@ func setupVm(
 	serverPort int,
 	hostPeerIp string,
 	vmPeerIp string,
+	interfaceName string,
+	dockerCIDRs []string,
+	enableDockerFilter bool,
+	bridgeIp string,
+	bridgeInterface string,
 	hostPrivateKey wgtypes.Key,
 	vmPrivateKey wgtypes.Key,
 ) error {
@@ -293,15 +326,25 @@ func setupVm(
 		io.Copy(os.Stdout, pullStream)
 	}
 
+	env := []string{
+		"SERVER_PORT=" + strconv.Itoa(serverPort),
+		"HOST_PEER_IP=" + hostPeerIp,
+		"VM_PEER_IP=" + vmPeerIp,
+		"INTERFACE_NAME=" + interfaceName,
+		"DOCKER_CIDRS=" + strings.Join(dockerCIDRs, ","),
+		"ENABLE_DOCKER_FILTER=" + strconv.FormatBool(enableDockerFilter),
+		"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
+		"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
+	}
+
+	if bridgeIp != "" {
+		env = append(env, "BRIDGE_IP="+bridgeIp)
+		env = append(env, "BRIDGE_INTERFACE="+bridgeInterface)
+	}
+
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
 		Image: imageName,
-		Env: []string{
-			"SERVER_PORT=" + strconv.Itoa(serverPort),
-			"HOST_PEER_IP=" + hostPeerIp,
-			"VM_PEER_IP=" + vmPeerIp,
-			"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
-			"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
-		},
+		Env:   env,
 	}, &container.HostConfig{
 		AutoRemove:  true,
 		NetworkMode: "host",

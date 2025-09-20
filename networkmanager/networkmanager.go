@@ -96,3 +96,17 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network network.Inspe
 	}
 	delete(manager.DockerNetworks, network.ID)
 }
+
+func (manager *NetworkManager) GetDockerCIDRs() []string {
+	var cidrs []string
+	for _, net := range manager.DockerNetworks {
+		if net.Scope == "local" {
+			for _, config := range net.IPAM.Config {
+				if config.Subnet != "" {
+					cidrs = append(cidrs, config.Subnet)
+				}
+			}
+		}
+	}
+	return cidrs
+}
