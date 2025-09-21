@@ -19,25 +19,31 @@ const (
 	ExitSetupFailed  = 1
 )
 
-func cleanup(interfaceName string, ipt *iptables.IPTables, hostPeerIp string, dockerCIDRs []string, bridgeIp string, bridgeInterface string) {
+func cleanup(interfaceName string, ipt *iptables.IPTables, hostPeerIp string, dockerCIDRs []string, dockerInterfaces []string, bridgeIp string, bridgeInterface string) {
 	if ipt != nil {
 		fmt.Println("Removing iptables NAT rules")
-		for _, cidr := range dockerCIDRs {
-			fmt.Printf("Removing NAT rule for CIDR: %s\n", cidr)
-			ipt.Delete("nat", "POSTROUTING", "-s", hostPeerIp, "-d", cidr, "-o", "docker+", "-j", "MASQUERADE")
+		for i, cidr := range dockerCIDRs {
+			if i < len(dockerInterfaces) {
+				fmt.Printf("Removing NAT rule for CIDR: %s on interface: %s\n", cidr, dockerInterfaces[i])
+				ipt.Delete("nat", "POSTROUTING", "-s", hostPeerIp, "-d", cidr, "-o", dockerInterfaces[i], "-j", "MASQUERADE")
+			}
 		}
 
 		fmt.Println("Removing iptables filter rules")
-		for _, cidr := range dockerCIDRs {
-			fmt.Printf("Removing filter rule for CIDR: %s\n", cidr)
-			ipt.Delete("filter", "DOCKER", "-s", hostPeerIp, "-d", cidr, "-o", "docker+", "-j", "ACCEPT")
+		for i, cidr := range dockerCIDRs {
+			if i < len(dockerInterfaces) {
+				fmt.Printf("Removing filter rule for CIDR: %s on interface: %s\n", cidr, dockerInterfaces[i])
+				ipt.Delete("filter", "DOCKER", "-s", hostPeerIp, "-d", cidr, "-o", dockerInterfaces[i], "-j", "ACCEPT")
+			}
 		}
 
 		if bridgeIp != "" {
 			fmt.Println("Removing bridge DOCKER-USER rules")
-			for _, cidr := range dockerCIDRs {
-				fmt.Printf("Removing DOCKER-USER rule for bridge IP %s to CIDR: %s\n", bridgeIp, cidr)
-				ipt.Delete("filter", "DOCKER-USER", "-s", bridgeIp, "-d", cidr, "-i", bridgeInterface, "-o", "docker+", "-j", "ACCEPT")
+			for i, cidr := range dockerCIDRs {
+				if i < len(dockerInterfaces) {
+					fmt.Printf("Removing DOCKER-USER rule for bridge IP %s to CIDR: %s on interface: %s\n", bridgeIp, cidr, dockerInterfaces[i])
+					ipt.Delete("filter", "DOCKER-USER", "-s", bridgeIp, "-d", cidr, "-i", bridgeInterface, "-o", dockerInterfaces[i], "-j", "ACCEPT")
+				}
 			}
 		}
 	}
@@ -105,6 +111,13 @@ func main() {
 	}
 	dockerCIDRs := strings.Split(dockerCIDRsString, ",")
 
+	dockerInterfacesString := os.Getenv("DOCKER_INTERFACES")
+	if dockerInterfacesString == "" {
+		fmt.Printf("DOCKER_INTERFACES is not set\n")
+		os.Exit(ExitSetupFailed)
+	}
+	dockerInterfaces := strings.Split(dockerInterfacesString, ",")
+
 	enableDockerFilterString := os.Getenv("ENABLE_DOCKER_FILTER")
 	enableDockerFilter := strings.ToLower(enableDockerFilterString) == "true"
 
@@ -117,7 +130,7 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("Panic occurred: %v\n", r)
-			cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+			cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 			os.Exit(ExitSetupFailed)
 		}
 	}()
@@ -155,13 +168,13 @@ func main() {
 	vmIpNet, err := netlink.ParseIPNet(vmPeerIp + "/32")
 	if err != nil {
 		fmt.Printf("Could not parse VM peer IPNet: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 	hostIpNet, err := netlink.ParseIPNet(hostPeerIp + "/32")
 	if err != nil {
 		fmt.Printf("Could not parse host peer IPNet: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -171,14 +184,14 @@ func main() {
 	err = netlink.AddrAdd(wireguard, &addr)
 	if err != nil {
 		fmt.Printf("Failed to assign IP to WireGuard interface: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	c, err := wgctrl.New()
 	if err != nil {
 		fmt.Printf("Failed to create wgctrl client: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -187,35 +200,35 @@ func main() {
 	vmPrivateKey, err := wgtypes.ParseKey(vmPrivateKeyString)
 	if err != nil {
 		fmt.Printf("Failed to parse VM private key: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	hostPublicKey, err := wgtypes.ParseKey(hostPublicKeyString)
 	if err != nil {
 		fmt.Printf("Failed to parse host public key: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	wildcardIpNet, err := netlink.ParseIPNet("0.0.0.0/0")
 	if err != nil {
 		fmt.Printf("Failed to parse wildcard IPNet: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	ips, err := net.LookupIP("host.docker.internal")
 	if err != nil || len(ips) == 0 {
 		fmt.Printf("Failed to lookup IP: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	persistentKeepaliveInterval, err := time.ParseDuration("25s")
 	if err != nil {
 		fmt.Printf("Failed to parse duration: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -237,21 +250,21 @@ func main() {
 	})
 	if err != nil {
 		fmt.Printf("Failed to configure wireguard device: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	err = netlink.LinkSetUp(wireguard)
 	if err != nil {
 		fmt.Printf("Failed to set wireguard link to up: %v\n", err)
-		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
 	ipt, err = iptables.New()
 	if err != nil {
 		fmt.Printf("Failed to create new iptables client: %v\n", err)
-		cleanup(interfaceName, nil, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+		cleanup(interfaceName, nil, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -259,19 +272,24 @@ func main() {
 
 	// Add specific iptables NAT rules for each Docker network CIDR
 	// This restricts masquerading only to traffic destined for Docker networks
-	// instead of masquerading all traffic from hostPeerIp
-	for _, cidr := range dockerCIDRs {
-		fmt.Printf("Adding NAT rule for Docker CIDR: %s\n", cidr)
+	// and uses the specific interface for each network instead of docker+ wildcard
+	for i, cidr := range dockerCIDRs {
+		if i >= len(dockerInterfaces) {
+			fmt.Printf("Warning: No interface found for CIDR %s, skipping\n", cidr)
+			continue
+		}
+		interfaceItem := dockerInterfaces[i]
+		fmt.Printf("Adding NAT rule for Docker CIDR: %s on interface: %s\n", cidr, interfaceItem)
 		err = ipt.AppendUnique(
 			"nat", "POSTROUTING",
 			"-s", hostPeerIp,
 			"-d", cidr,
-			"-o", "docker+",
+			"-o", interfaceItem,
 			"-j", "MASQUERADE",
 		)
 		if err != nil {
-			fmt.Printf("Failed to add iptables nat rule for CIDR %s: %v\n", cidr, err)
-			cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+			fmt.Printf("Failed to add iptables nat rule for CIDR %s on interface %s: %v\n", cidr, interfaceItem, err)
+			cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 			os.Exit(ExitSetupFailed)
 		}
 	}
@@ -281,26 +299,32 @@ func main() {
 
 		// Add specific iptables filter rules for each Docker network CIDR
 		// This allows traffic from hostPeerIp only to specific Docker networks
-		for _, cidr := range dockerCIDRs {
-			fmt.Printf("Adding filter rule for Docker CIDR: %s\n", cidr)
+		// and uses the specific interface for each network instead of docker+ wildcard
+		for i, cidr := range dockerCIDRs {
+			if i >= len(dockerInterfaces) {
+				fmt.Printf("Warning: No interface found for CIDR %s, skipping\n", cidr)
+				continue
+			}
+			interfaceItem := dockerInterfaces[i]
+			fmt.Printf("Adding filter rule for Docker CIDR: %s on interface: %s\n", cidr, interfaceItem)
 			err = ipt.DeleteIfExists("filter", "DOCKER",
 				"-s", hostPeerIp,
 				"-d", cidr,
-				"-o", "docker+",
+				"-o", interfaceItem,
 				"-j", "ACCEPT")
 			if err != nil {
-				fmt.Printf("Failed to delete iptables filter rule for CIDR %s: %v\n", cidr, err)
-				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+				fmt.Printf("Failed to delete iptables filter rule for CIDR %s on interface %s: %v\n", cidr, interfaceItem, err)
+				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 				os.Exit(ExitSetupFailed)
 			}
 			err = ipt.Insert("filter", "DOCKER", 1,
 				"-s", hostPeerIp,
 				"-d", cidr,
-				"-o", "docker+",
+				"-o", interfaceItem,
 				"-j", "ACCEPT")
 			if err != nil {
-				fmt.Printf("Failed to insert iptables filter rule for CIDR %s: %v\n", cidr, err)
-				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+				fmt.Printf("Failed to insert iptables filter rule for CIDR %s on interface %s: %v\n", cidr, interfaceItem, err)
+				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 				os.Exit(ExitSetupFailed)
 			}
 		}
@@ -310,17 +334,23 @@ func main() {
 		fmt.Printf("Adding bridge traffic DOCKER-USER rules for bridge IP: %s\n", bridgeIp)
 
 		// Add DOCKER-USER rule to accept bridge traffic from bridge IP to Docker networks
-		for _, cidr := range dockerCIDRs {
-			fmt.Printf("Adding DOCKER-USER rule for bridge IP %s to Docker CIDR: %s\n", bridgeIp, cidr)
+		// and uses the specific interface for each network instead of docker+ wildcard
+		for i, cidr := range dockerCIDRs {
+			if i >= len(dockerInterfaces) {
+				fmt.Printf("Warning: No interface found for CIDR %s, skipping\n", cidr)
+				continue
+			}
+			interfaceItem := dockerInterfaces[i]
+			fmt.Printf("Adding DOCKER-USER rule for bridge IP %s to Docker CIDR: %s on interface: %s\n", bridgeIp, cidr, interfaceItem)
 			err = ipt.AppendUnique("filter", "DOCKER-USER",
 				"-s", bridgeIp,
 				"-d", cidr,
 				"-i", bridgeInterface,
-				"-o", "docker+",
+				"-o", interfaceItem,
 				"-j", "ACCEPT")
 			if err != nil {
-				fmt.Printf("Failed to add DOCKER-USER rule for bridge IP %s to CIDR %s: %v\n", bridgeIp, cidr, err)
-				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, bridgeIp, bridgeInterface)
+				fmt.Printf("Failed to add DOCKER-USER rule for bridge IP %s to CIDR %s on interface %s: %v\n", bridgeIp, cidr, interfaceItem, err)
+				cleanup(interfaceName, ipt, hostPeerIp, dockerCIDRs, dockerInterfaces, bridgeIp, bridgeInterface)
 				os.Exit(ExitSetupFailed)
 			}
 		}

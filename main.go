@@ -209,14 +209,14 @@ func main() {
 		for {
 			logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
 
-			dockerCIDRs := networkManager.GetDockerCIDRs(ctx, cli)
-			if len(dockerCIDRs) == 0 {
+			dockerNetworkInfos := networkManager.GetDockerNetworkInfo(ctx, cli)
+			if len(dockerNetworkInfos) == 0 {
 				logger.Verbosef("No Docker networks found, skipping VM setup\n")
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			err = setupVm(ctx, cli, portNumWg, hostPeerIp, vmPeerIp, interfaceNameWg, dockerCIDRs, enableDockerFilter, bridgeIp, bridgeInterface, hostPrivateKey, vmPrivateKey)
+			err = setupVm(ctx, cli, portNumWg, hostPeerIp, vmPeerIp, interfaceNameWg, dockerNetworkInfos, enableDockerFilter, bridgeIp, bridgeInterface, hostPrivateKey, vmPrivateKey)
 			if err != nil {
 				logger.Errorf("Failed to setup VM: %v", err)
 				time.Sleep(5 * time.Second)
@@ -306,7 +306,7 @@ func setupVm(
 	hostPeerIp string,
 	vmPeerIp string,
 	interfaceName string,
-	dockerCIDRs []string,
+	dockerNetworkInfos []networkmanager.DockerNetworkInfo,
 	enableDockerFilter bool,
 	bridgeIp string,
 	bridgeInterface string,
@@ -327,12 +327,21 @@ func setupVm(
 		io.Copy(os.Stdout, pullStream)
 	}
 
+	// Convert network infos to environment variables
+	var dockerCIDRs []string
+	var dockerInterfaces []string
+	for _, info := range dockerNetworkInfos {
+		dockerCIDRs = append(dockerCIDRs, info.CIDR)
+		dockerInterfaces = append(dockerInterfaces, info.Interface)
+	}
+
 	env := []string{
 		"SERVER_PORT=" + strconv.Itoa(serverPort),
 		"HOST_PEER_IP=" + hostPeerIp,
 		"VM_PEER_IP=" + vmPeerIp,
 		"INTERFACE_NAME=" + interfaceName,
 		"DOCKER_CIDRS=" + strings.Join(dockerCIDRs, ","),
+		"DOCKER_INTERFACES=" + strings.Join(dockerInterfaces, ","),
 		"ENABLE_DOCKER_FILTER=" + strconv.FormatBool(enableDockerFilter),
 		"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
 		"VM_PRIVATE_KEY=" + vmPrivateKey.String(),

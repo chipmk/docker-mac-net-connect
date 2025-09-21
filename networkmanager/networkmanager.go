@@ -120,6 +120,11 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network network.Inspe
 	delete(manager.DockerNetworks, network.ID)
 }
 
+type DockerNetworkInfo struct {
+	CIDR      string
+	Interface string
+}
+
 func (manager *NetworkManager) GetDockerCIDRs(ctx context.Context, cli *client.Client) []string {
 	var cidrs []string
 
@@ -149,4 +154,62 @@ func (manager *NetworkManager) GetDockerCIDRs(ctx context.Context, cli *client.C
 		}
 	}
 	return cidrs
+}
+
+func (manager *NetworkManager) GetDockerNetworkInfo(ctx context.Context, cli *client.Client) []DockerNetworkInfo {
+	var networkInfos []DockerNetworkInfo
+
+	networks, err := cli.NetworkList(ctx, network.ListOptions{})
+	if err != nil {
+		fmt.Printf("Failed to list Docker networks: %v\n", err)
+		return networkInfos
+	}
+
+	for _, dockerNet := range networks {
+		if dockerNet.Scope == "local" {
+			// Get detailed network info to access interface name
+			detailedNet, err := cli.NetworkInspect(ctx, dockerNet.ID, network.InspectOptions{})
+			if err != nil {
+				fmt.Printf("Failed to inspect Docker network %s: %v\n", dockerNet.ID, err)
+				continue
+			}
+
+			// Extract interface name from network options
+			interfaceName := ""
+			if detailedNet.Options != nil {
+				if iface, exists := detailedNet.Options["com.docker.network.bridge.name"]; exists {
+					interfaceName = iface
+				}
+			}
+
+			// If no explicit interface name, generate based on network ID (Docker's default naming)
+			if interfaceName == "" {
+				if len(detailedNet.ID) >= 12 {
+					interfaceName = "br-" + detailedNet.ID[:12]
+				} else {
+					interfaceName = "docker0" // fallback for default bridge
+				}
+			}
+
+			for _, config := range detailedNet.IPAM.Config {
+				if config.Subnet != "" {
+					// Parse the subnet to check if it's IPv4
+					_, ipNet, err := net.ParseCIDR(config.Subnet)
+					if err != nil {
+						fmt.Printf("Failed to parse CIDR %s: %v\n", config.Subnet, err)
+						continue
+					}
+
+					// Only include IPv4 CIDRs, exclude IPv6
+					if ipNet.IP.To4() != nil {
+						networkInfos = append(networkInfos, DockerNetworkInfo{
+							CIDR:      config.Subnet,
+							Interface: interfaceName,
+						})
+					}
+				}
+			}
+		}
+	}
+	return networkInfos
 }
