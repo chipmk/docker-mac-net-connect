@@ -76,7 +76,7 @@ func (manager *NetworkManager) ProcessDockerNetworkCreate(network types.NetworkR
 			_, stderr, err := manager.AddRoute(config.Subnet, iface)
 
 			if err != nil {
-				fmt.Errorf("Failed to add route: %v. %v\n", err, stderr)
+				fmt.Printf("Failed to add route: %v. %v\n", err, stderr)
 			}
 		}
 	}
@@ -90,7 +90,7 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network types.Network
 			_, stderr, err := manager.DeleteRoute(config.Subnet)
 
 			if err != nil {
-				fmt.Errorf("Failed to delete route: %v. %v\n", err, stderr)
+				fmt.Printf("Failed to delete route: %v. %v\n", err, stderr)
 			}
 		}
 	}
