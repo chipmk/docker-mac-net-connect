@@ -90,7 +90,7 @@ func (manager *NetworkManager) ProcessDockerNetworkDestroy(network types.Network
 			_, stderr, err := manager.DeleteRoute(config.Subnet)
 
 			if err != nil {
-				fmt.Printf("Failed to delete route: %v. %v\n", err, stderr)
+				fmt.Fprintf(os.Stderr, "Failed to delete route: %v. %v\n", err, stderr)
 			}
 		}
 	}
