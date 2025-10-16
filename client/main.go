@@ -100,7 +100,7 @@ func main() {
 	addr := netlink.Addr{IPNet: vmIpNet, Peer: hostIpNet}
 	err = netlink.AddrAdd(wireguard, &addr)
 	if err != nil {
-		fmt.Printf("Could not add address %v to WireGuard interface: %v\n", addr, err)
+		fmt.Fprintf(os.Stderr, "Could not add address %v to WireGuard interface: %v\n", addr, err)
 	}
 
 	c, err := wgctrl.New()
