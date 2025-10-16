@@ -76,7 +76,7 @@ func (manager *NetworkManager) ProcessDockerNetworkCreate(network types.NetworkR
 			_, stderr, err := manager.AddRoute(config.Subnet, iface)
 
 			if err != nil {
-				fmt.Printf("Failed to add route: %v. %v\n", err, stderr)
+				fmt.Fprintf(os.Stderr, "Failed to add route: %v. %v\n", err, stderr)
 			}
 		}
 	}
