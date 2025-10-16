@@ -98,7 +98,10 @@ func main() {
 	fmt.Println("Assigning IP to WireGuard interface")
 
 	addr := netlink.Addr{IPNet: vmIpNet, Peer: hostIpNet}
-	netlink.AddrAdd(wireguard, &addr)
+	err = netlink.AddrAdd(wireguard, &addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not add address %v to WireGuard interface: %v\n", addr, err)
+	}
 
 	c, err := wgctrl.New()
 	if err != nil {
