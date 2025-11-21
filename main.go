@@ -13,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
@@ -34,12 +36,6 @@ const (
 	ExitSetupFailed  = 1
 )
 
-const (
-	ENV_WG_TUN_FD             = "WG_TUN_FD"
-	ENV_WG_UAPI_FD            = "WG_UAPI_FD"
-	ENV_WG_PROCESS_FOREGROUND = "WG_PROCESS_FOREGROUND"
-)
-
 func main() {
 	logLevel := func() int {
 		switch os.Getenv("LOG_LEVEL") {
@@ -55,15 +51,15 @@ func main() {
 
 	fmt.Printf("docker-mac-net-connect version '%s'\n", version.Version)
 
-	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
+	tunnel, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("Failed to create TUN device: %v", err)
+		_ = fmt.Errorf("failed to create TUN device: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	interfaceName, err := tun.Name()
+	interfaceName, err := tunnel.Name()
 	if err != nil {
-		fmt.Errorf("Failed to get TUN device name: %v", err)
+		_ = fmt.Errorf("failed to get TUN device name: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -79,7 +75,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	device := device.NewDevice(tun, conn.NewDefaultBind(), logger)
+	dev := device.NewDevice(tunnel, conn.NewDefaultBind(), logger)
 
 	logger.Verbosef("Device started")
 
@@ -94,12 +90,12 @@ func main() {
 
 	go func() {
 		for {
-			conn, err := uapi.Accept()
+			connection, err := uapi.Accept()
 			if err != nil {
 				errs <- err
 				return
 			}
-			go device.IpcHandle(conn)
+			go dev.IpcHandle(connection)
 		}
 	}()
 
@@ -116,7 +112,12 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	defer c.Close()
+	defer func(c *wgctrl.Client) {
+		err = c.Close()
+		if err != nil {
+			logger.Errorf("Failed to close wgctrl client: %v", err)
+		}
+	}(c)
 
 	hostPrivateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
@@ -192,20 +193,25 @@ func main() {
 				continue
 			}
 
-			networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+			networks, err := cli.NetworkList(ctx, network.ListOptions{})
 			if err != nil {
 				logger.Errorf("Failed to list Docker networks: %v", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			for _, network := range networks {
-				networkManager.ProcessDockerNetworkCreate(network, interfaceName)
+			for _, nw := range networks {
+				inspected, err := cli.NetworkInspect(ctx, nw.ID, network.InspectOptions{})
+				if err != nil {
+					logger.Errorf("Failed to inspect Docker network: %v", err)
+					continue
+				}
+				networkManager.ProcessDockerNetworkCreate(inspected, interfaceName)
 			}
 
 			logger.Verbosef("Watching Docker events\n")
 
-			msgs, errsChan := cli.Events(ctx, types.EventsOptions{
+			msgs, errsChan := cli.Events(ctx, events.ListOptions{
 				Filters: filters.NewArgs(
 					filters.Arg("type", "network"),
 					filters.Arg("event", "create"),
@@ -221,25 +227,25 @@ func main() {
 				case msg := <-msgs:
 					// Add routes when new Docker networks are created
 					if msg.Type == "network" && msg.Action == "create" {
-						network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
+						dockerNetwork, err := cli.NetworkInspect(ctx, msg.Actor.ID, network.InspectOptions{})
 						if err != nil {
 							logger.Errorf("Failed to inspect new Docker network: %v", err)
 							continue
 						}
 
-						networkManager.ProcessDockerNetworkCreate(network, interfaceName)
+						networkManager.ProcessDockerNetworkCreate(dockerNetwork, interfaceName)
 						continue
 					}
 
 					// Delete routes when Docker networks are destroyed
 					if msg.Type == "network" && msg.Action == "destroy" {
-						network, exists := networkManager.DockerNetworks[msg.Actor.ID]
+						dockerNetwork, exists := networkManager.DockerNetworks[msg.Actor.ID]
 						if !exists {
-							logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
+							logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.", msg.Actor.ID)
 							continue
 						}
 
-						networkManager.ProcessDockerNetworkDestroy(network)
+						networkManager.ProcessDockerNetworkDestroy(dockerNetwork)
 						continue
 					}
 				}
@@ -257,15 +263,17 @@ func main() {
 	select {
 	case <-term:
 	case <-errs:
-	case <-device.Wait():
+	case <-dev.Wait():
 	}
 
 	// Clean up
 
-	uapi.Close()
-	device.Close()
+	_ = uapi.Close()
+	dev.Close()
 
 	logger.Verbosef("Shutting down\n")
+
+	os.Exit(ExitSetupSuccess)
 }
 
 func setupVm(
@@ -279,16 +287,16 @@ func setupVm(
 ) error {
 	imageName := fmt.Sprintf("%s:%s", version.SetupImage, version.Version)
 
-	_, _, err := dockerCli.ImageInspectWithRaw(ctx, imageName)
+	_, err := dockerCli.ImageInspect(ctx, imageName)
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
 
-		io.Copy(os.Stdout, pullStream)
+		_, _ = io.Copy(os.Stdout, pullStream)
 	}
 
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
@@ -310,13 +318,13 @@ func setupVm(
 	}
 
 	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+	_ = func() error {
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
@@ -325,7 +333,12 @@ func setupVm(
 			return fmt.Errorf("failed to get logs for container %s: %w", resp.ID, err)
 		}
 
-		defer reader.Close()
+		defer func(reader io.ReadCloser) {
+			err = reader.Close()
+			if err != nil {
+				fmt.Printf("Failed to close container logs reader: %v\n", err)
+			}
+		}(reader)
 
 		_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
 		if err != nil {
