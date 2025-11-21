@@ -100,7 +100,7 @@ func main() {
 	addr := netlink.Addr{IPNet: vmIpNet, Peer: hostIpNet}
 	err = netlink.AddrAdd(wireguard, &addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not add address %v to WireGuard interface: %v\n", addr, err)
+		_, _ = fmt.Fprintf(os.Stderr, "Could not add address %v to WireGuard interface: %v\n", addr, err)
 	}
 
 	c, err := wgctrl.New()
@@ -109,7 +109,12 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	defer c.Close()
+	defer func(c *wgctrl.Client) {
+		err = c.Close()
+		if err != nil {
+			fmt.Printf("Failed to close wgctrl client: %v\n", err)
+		}
+	}(c)
 
 	vmPrivateKey, err := wgtypes.ParseKey(vmPrivateKeyString)
 	if err != nil {
@@ -178,7 +183,7 @@ func main() {
 
 	// Add iptables NAT rule to translate incoming packet's
 	// source IP to the respective Docker network interface IP.
-	// Required to route reply packets back through correct
+	// Required to route reply packets back through the correct
 	// container interface.
 	err = ipt.AppendUnique(
 		"nat", "POSTROUTING",
@@ -206,4 +211,6 @@ func main() {
 		fmt.Printf("Failed to insert iptables filter rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	os.Exit(ExitSetupSuccess)
 }
