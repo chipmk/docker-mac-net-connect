@@ -13,9 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"golang.zx2c4.com/wireguard/conn"
@@ -55,15 +57,15 @@ func main() {
 
 	fmt.Printf("docker-mac-net-connect version '%s'\n", version.Version)
 
-	tun, err := tun.CreateTUN("utun", device.DefaultMTU)
+	mainTun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("Failed to create TUN device: %v", err)
+		fmt.Errorf("failed to create TUN device: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	interfaceName, err := tun.Name()
+	interfaceName, err := mainTun.Name()
 	if err != nil {
-		fmt.Errorf("Failed to get TUN device name: %v", err)
+		fmt.Errorf("failed to get TUN device name: %v", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -79,7 +81,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	device := device.NewDevice(tun, conn.NewDefaultBind(), logger)
+	mainDevice := device.NewDevice(mainTun, conn.NewDefaultBind(), logger)
 
 	logger.Verbosef("Device started")
 
@@ -94,12 +96,12 @@ func main() {
 
 	go func() {
 		for {
-			conn, err := uapi.Accept()
+			uapiConn, err := uapi.Accept()
 			if err != nil {
 				errs <- err
 				return
 			}
-			go device.IpcHandle(conn)
+			go mainDevice.IpcHandle(uapiConn)
 		}
 	}()
 
@@ -192,7 +194,7 @@ func main() {
 				continue
 			}
 
-			networks, err := cli.NetworkList(ctx, types.NetworkListOptions{})
+			networks, err := cli.NetworkList(ctx, network.ListOptions{})
 			if err != nil {
 				logger.Errorf("Failed to list Docker networks: %v", err)
 				time.Sleep(5 * time.Second)
@@ -205,7 +207,7 @@ func main() {
 
 			logger.Verbosef("Watching Docker events\n")
 
-			msgs, errsChan := cli.Events(ctx, types.EventsOptions{
+			msgs, errsChan := cli.Events(ctx, events.ListOptions{
 				Filters: filters.NewArgs(
 					filters.Arg("type", "network"),
 					filters.Arg("event", "create"),
@@ -221,25 +223,25 @@ func main() {
 				case msg := <-msgs:
 					// Add routes when new Docker networks are created
 					if msg.Type == "network" && msg.Action == "create" {
-						network, err := cli.NetworkInspect(ctx, msg.Actor.ID, types.NetworkInspectOptions{})
+						loopNetwork, err := cli.NetworkInspect(ctx, msg.Actor.ID, network.InspectOptions{})
 						if err != nil {
 							logger.Errorf("Failed to inspect new Docker network: %v", err)
 							continue
 						}
 
-						networkManager.ProcessDockerNetworkCreate(network, interfaceName)
+						networkManager.ProcessDockerNetworkCreate(loopNetwork, interfaceName)
 						continue
 					}
 
 					// Delete routes when Docker networks are destroyed
 					if msg.Type == "network" && msg.Action == "destroy" {
-						network, exists := networkManager.DockerNetworks[msg.Actor.ID]
+						loopNetwork, exists := networkManager.DockerNetworks[msg.Actor.ID]
 						if !exists {
 							logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
 							continue
 						}
 
-						networkManager.ProcessDockerNetworkDestroy(network)
+						networkManager.ProcessDockerNetworkDestroy(loopNetwork)
 						continue
 					}
 				}
@@ -257,13 +259,13 @@ func main() {
 	select {
 	case <-term:
 	case <-errs:
-	case <-device.Wait():
+	case <-mainDevice.Wait():
 	}
 
 	// Clean up
 
 	uapi.Close()
-	device.Close()
+	mainDevice.Close()
 
 	logger.Verbosef("Shutting down\n")
 }
@@ -283,7 +285,7 @@ func setupVm(
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, types.ImagePullOptions{})
+		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
@@ -310,13 +312,13 @@ func setupVm(
 	}
 
 	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
 	func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, types.ContainerLogsOptions{
+		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
 			Follow:     true,
