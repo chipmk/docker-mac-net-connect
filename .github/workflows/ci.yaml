@@ -25,7 +25,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.9.0
 
   build-client:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
       - name: Lint client
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.9.0
           working-directory: client
 
       - name: Build Docker image
