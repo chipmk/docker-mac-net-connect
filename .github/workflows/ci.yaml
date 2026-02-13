@@ -23,7 +23,7 @@ jobs:
         run: go vet ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.9.0
 
@@ -41,7 +41,7 @@ jobs:
         working-directory: client
 
       - name: Lint client
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.9.0
           working-directory: client
