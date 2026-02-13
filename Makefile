@@ -3,7 +3,7 @@ SETUP_IMAGE := ghcr.io/chipmk/docker-mac-net-connect/setup
 VERSION     := $(shell git describe --tags 2>/dev/null || echo dev)
 LD_FLAGS    := -X $(PROJECT)/version.Version=$(VERSION) -X $(PROJECT)/version.SetupImage=$(SETUP_IMAGE)
 
-.PHONY: run build run-go build-go build-docker build-push-docker vet lint
+.PHONY: run build run-go build-go build-docker build-push-docker vet lint e2e
 
 run: build-docker run-go
 build: build-docker build-go
@@ -25,3 +25,6 @@ vet:
 
 lint:
 	golangci-lint run ./...
+
+e2e:
+	./scripts/e2e-test.sh
