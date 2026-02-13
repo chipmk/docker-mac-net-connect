@@ -1,0 +1,44 @@
+name: Dependabot Docker Comment
+
+on:
+  pull_request:
+    paths:
+      - go.mod
+      - go.sum
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for Docker dependency changes
+        id: check
+        run: |
+          if git diff origin/main -- go.mod | grep -q 'github.com/docker/docker'; then
+            echo "is_docker=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on Docker dependency PR
+        if: steps.check.outputs.is_docker == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Docker client library update
+
+            **Why this matters:** This project depends on the Docker client API to communicate with Docker Desktop. When Docker Desktop updates, it may raise or lower the API versions it supports.
+
+            - If we **don't update** and Docker Desktop raises its minimum API version above what our current client supports, users will see: \`client version X is too old\`
+            - \`WithAPIVersionNegotiation()\` handles the "too new" direction automatically, but **cannot fix "too old"**
+            - Merging this PR keeps our client library current and prevents compatibility gaps
+
+            **Action:** Merge this to stay compatible with the latest Docker Desktop releases. Test manually with \`make build && sudo ./docker-mac-net-connect\` and \`./scripts/e2e-test.sh\` before releasing.`
+            })

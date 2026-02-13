@@ -1,0 +1,35 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: docker-mac-net-connect
+    main: .
+    binary: docker-mac-net-connect
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/chipmk/docker-mac-net-connect/version.Version={{.Tag}}
+      - -X github.com/chipmk/docker-mac-net-connect/version.SetupImage=ghcr.io/chipmk/docker-mac-net-connect/setup
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^chore:"
+      - "^ci:"

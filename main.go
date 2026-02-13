@@ -59,13 +59,13 @@ func main() {
 
 	mainTun, err := tun.CreateTUN("utun", device.DefaultMTU)
 	if err != nil {
-		fmt.Errorf("failed to create TUN device: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to create TUN device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
 	interfaceName, err := mainTun.Name()
 	if err != nil {
-		fmt.Errorf("failed to get TUN device name: %v", err)
+		fmt.Fprintf(os.Stderr, "failed to get TUN device name: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
@@ -173,7 +173,7 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Errorf("Failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
