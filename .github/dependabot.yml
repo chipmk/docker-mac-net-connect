@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns:
+          - "github.com/docker/*"
+          - "github.com/moby/*"
+        update-types:
+          - minor
+          - patch
+      all:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+
+  - package-ecosystem: gomod
+    directory: /client
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies

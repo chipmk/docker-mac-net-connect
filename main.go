@@ -173,7 +173,7 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Errorf("Failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
