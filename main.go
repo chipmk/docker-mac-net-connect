@@ -118,7 +118,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	hostPrivateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
@@ -264,7 +264,7 @@ func main() {
 
 	// Clean up
 
-	uapi.Close()
+	_ = uapi.Close()
 	mainDevice.Close()
 
 	logger.Verbosef("Shutting down\n")
@@ -281,7 +281,7 @@ func setupVm(
 ) error {
 	imageName := fmt.Sprintf("%s:%s", version.SetupImage, version.Version)
 
-	_, _, err := dockerCli.ImageInspectWithRaw(ctx, imageName)
+	_, err := dockerCli.ImageInspect(ctx, imageName)
 	if err != nil {
 		fmt.Printf("Image doesn't exist locally. Pulling...\n")
 
@@ -290,7 +290,7 @@ func setupVm(
 			return fmt.Errorf("failed to pull setup image: %w", err)
 		}
 
-		io.Copy(os.Stdout, pullStream)
+		_, _ = io.Copy(os.Stdout, pullStream)
 	}
 
 	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
@@ -317,7 +317,7 @@ func setupVm(
 		return fmt.Errorf("failed to start container: %w", err)
 	}
 
-	func() error {
+	if err := func() error {
 		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
@@ -327,7 +327,7 @@ func setupVm(
 			return fmt.Errorf("failed to get logs for container %s: %w", resp.ID, err)
 		}
 
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
 		if err != nil {
@@ -335,7 +335,9 @@ func setupVm(
 		}
 
 		return nil
-	}()
+	}(); err != nil {
+		return err
+	}
 
 	fmt.Println("Setup container complete")
 
