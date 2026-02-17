@@ -1,6 +1,6 @@
 module github.com/chipmk/docker-mac-net-connect/client
 
-go 1.17
+go 1.26
 
 require (
 	github.com/coreos/go-iptables v0.6.0

@@ -40,5 +40,11 @@ jobs:
         run: go vet ./...
         working-directory: client
 
+      - name: Lint client
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.9.0
+          working-directory: client
+
       - name: Build Docker image
         run: docker build ./client

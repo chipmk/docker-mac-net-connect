@@ -109,7 +109,7 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	vmPrivateKey, err := wgtypes.ParseKey(vmPrivateKeyString)
 	if err != nil {
