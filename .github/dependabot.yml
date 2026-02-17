@@ -25,6 +25,13 @@ updates:
     directory: /client
     schedule:
       interval: weekly
+    groups:
+      all:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
     labels:
       - dependencies
 
