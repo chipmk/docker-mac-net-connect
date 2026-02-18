@@ -185,6 +185,21 @@ func main() {
 
 	fmt.Println("Adding iptables rules for WireGuard interface")
 
+	// Allow WireGuard traffic through the raw table. Docker 28.0+ adds
+	// "Direct Access Filtering" - per-container DROP rules in raw PREROUTING
+	// that block traffic to container IPs from non-bridge interfaces. Since
+	// raw is processed before mangle and filter, our DOCKER-USER rules never
+	// see the packets without this.
+	err = ipt.Insert(
+		"raw", "PREROUTING", 1,
+		"-i", interfaceName,
+		"-j", "ACCEPT",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add raw accept rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
 	// Accept all traffic entering via WireGuard. DOCKER-USER is evaluated
 	// before Docker's own DOCKER chain, bypassing its DROP rules for
 	// traffic from non-bridge interfaces (added in Docker Desktop 4.39.0).
