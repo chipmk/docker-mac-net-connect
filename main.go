@@ -198,8 +198,11 @@ func main() {
 				logger.Verbosef("Failed to lookup user %s: %v\n", consoleUser, err)
 			} else {
 				dockerConfig := filepath.Join(u.HomeDir, ".docker")
-				os.Setenv("DOCKER_CONFIG", dockerConfig)
-				logger.Verbosef("Set DOCKER_CONFIG to %s (console user: %s)\n", dockerConfig, consoleUser)
+				if err := os.Setenv("DOCKER_CONFIG", dockerConfig); err != nil {
+					logger.Verbosef("Failed to set DOCKER_CONFIG: %v\n", err)
+				} else {
+					logger.Verbosef("Set DOCKER_CONFIG to %s (console user: %s)\n", dockerConfig, consoleUser)
+				}
 			}
 		}
 	}
