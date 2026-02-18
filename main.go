@@ -9,6 +9,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -183,15 +185,36 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	dockerHost, err := dcontext.CurrentDockerHost()
-	if err != nil {
-		logger.Errorf("Failed to resolve Docker host from context: %v", err)
-		os.Exit(ExitSetupFailed)
+	// When running as root (e.g. via launchd), the docker config lives under
+	// the console user's home directory. Set DOCKER_CONFIG so the context
+	// resolver can find it.
+	if os.Getenv("DOCKER_CONFIG") == "" {
+		consoleUser, err := getConsoleUser()
+		if err != nil {
+			logger.Verbosef("Failed to get console user: %v\n", err)
+		} else {
+			u, err := user.Lookup(consoleUser)
+			if err != nil {
+				logger.Verbosef("Failed to lookup user %s: %v\n", consoleUser, err)
+			} else {
+				dockerConfig := filepath.Join(u.HomeDir, ".docker")
+				os.Setenv("DOCKER_CONFIG", dockerConfig)
+				logger.Verbosef("Set DOCKER_CONFIG to %s (console user: %s)\n", dockerConfig, consoleUser)
+			}
+		}
 	}
 
-	logger.Verbosef("Using Docker host: %s\n", dockerHost)
+	var hostOpt client.Opt
+	dockerHost, err := dcontext.CurrentDockerHost()
+	if err != nil {
+		logger.Verbosef("Failed to resolve Docker host from context: %v, falling back to env/default\n", err)
+		hostOpt = client.FromEnv
+	} else {
+		logger.Verbosef("Using Docker host: %s\n", dockerHost)
+		hostOpt = client.WithHost(dockerHost)
+	}
 
-	cli, err := client.NewClientWithOpts(client.WithHost(dockerHost), client.WithAPIVersionNegotiation())
+	cli, err := client.NewClientWithOpts(hostOpt, client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Errorf("Failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
@@ -360,4 +383,25 @@ func setupVm(
 	fmt.Println("Setup container complete")
 
 	return nil
+}
+
+// getConsoleUser returns the username of the currently logged-in GUI user
+// by checking the owner of /dev/console.
+func getConsoleUser() (string, error) {
+	info, err := os.Stat("/dev/console")
+	if err != nil {
+		return "", fmt.Errorf("stat /dev/console: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", fmt.Errorf("unexpected stat type for /dev/console")
+	}
+	u, err := user.LookupId(strconv.FormatUint(uint64(stat.Uid), 10))
+	if err != nil {
+		return "", fmt.Errorf("lookup uid %d: %w", stat.Uid, err)
+	}
+	if u.Username == "root" {
+		return "", fmt.Errorf("no console user logged in")
+	}
+	return u.Username, nil
 }

@@ -57,8 +57,9 @@ Before releasing, verify:
 1. `make build` succeeds
 2. `sudo ./docker-mac-net-connect` starts and creates the tunnel
 3. `./scripts/e2e-test.sh` passes
-4. Stop and restart Docker Desktop - verify the server reconnects automatically
-5. For Homebrew releases: `brew upgrade chipmk/tap/docker-mac-net-connect` and `sudo brew services restart chipmk/tap/docker-mac-net-connect`
+4. Test as root (simulates launchd): `sudo -i $(pwd)/docker-mac-net-connect`
+5. Stop and restart Docker Desktop - verify the server reconnects automatically
+6. For Homebrew releases: `brew upgrade chipmk/tap/docker-mac-net-connect` and `sudo brew services restart chipmk/tap/docker-mac-net-connect`
 
 ## Releases
 
