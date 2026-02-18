@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -168,42 +170,105 @@ func main() {
 		os.Exit(ExitSetupFailed)
 	}
 
+	// Look up the WireGuard link for policy routing setup
+	link, err := netlink.LinkByName(interfaceName)
+	if err != nil {
+		fmt.Printf("Failed to get link %s: %v\n", interfaceName, err)
+		os.Exit(ExitSetupFailed)
+	}
+
 	ipt, err := iptables.New()
 	if err != nil {
 		fmt.Printf("Failed to create new iptables client: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	fmt.Println("Adding iptables NAT rule for host WireGuard IP")
+	fmt.Println("Adding iptables rules for WireGuard interface")
 
-	// Add iptables NAT rule to translate incoming packet's
-	// source IP to the respective Docker network interface IP.
-	// Required to route reply packets back through correct
-	// container interface.
+	// Accept all traffic entering via WireGuard. DOCKER-USER is evaluated
+	// before Docker's own DOCKER chain, bypassing its DROP rules for
+	// traffic from non-bridge interfaces (added in Docker Desktop 4.39.0).
+	err = ipt.AppendUnique(
+		"filter", "DOCKER-USER",
+		"-i", interfaceName,
+		"-j", "ACCEPT",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+	err = ipt.AppendUnique(
+		"filter", "DOCKER-USER",
+		"-o", interfaceName,
+		"-j", "ACCEPT",
+	)
+	if err != nil {
+		fmt.Printf("Failed to add iptables filter rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	// Masquerade traffic from the macOS host (identified by its WireGuard IP)
+	// so containers on internal networks can reply. Internal networks have no
+	// default gateway, so the source must be rewritten to the bridge IP.
+	// Traffic from other sources (eg. LAN devices) is not masqueraded,
+	// preserving original source IPs.
 	err = ipt.AppendUnique(
 		"nat", "POSTROUTING",
 		"-s", hostPeerIp,
 		"-j", "MASQUERADE",
 	)
 	if err != nil {
-		fmt.Printf("Failed to add iptables nat rule: %v\n", err)
+		fmt.Printf("Failed to add masquerade rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 
-	// Insert or replace iptables accept rule for host peer IP address,
-	// allowing only tunnel packets to be forwarded and routed
-	err = ipt.DeleteIfExists("filter", "DOCKER",
-		"-s", hostPeerIp,
-		"-j", "ACCEPT")
+	// Tag conntrack entries for connections entering via WireGuard.
+	// This allows reply packets to be routed back through the tunnel
+	// without masquerading, preserving the original source IP.
+	err = ipt.AppendUnique(
+		"mangle", "PREROUTING",
+		"-i", interfaceName,
+		"-j", "CONNMARK", "--set-mark", "0x1",
+	)
 	if err != nil {
-		fmt.Printf("Failed to delete iptables filter rule: %v\n", err)
+		fmt.Printf("Failed to add connmark rule: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
-	err = ipt.Insert("filter", "DOCKER", 1,
-		"-s", hostPeerIp,
-		"-j", "ACCEPT")
+
+	// Restore conntrack mark to packet mark on reply packets so
+	// policy routing can send them back through WireGuard
+	err = ipt.AppendUnique(
+		"mangle", "PREROUTING",
+		"!", "-i", interfaceName,
+		"-m", "connmark", "--mark", "0x1",
+		"-j", "CONNMARK", "--restore-mark",
+	)
 	if err != nil {
-		fmt.Printf("Failed to insert iptables filter rule: %v\n", err)
+		fmt.Printf("Failed to add mark restore rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	fmt.Println("Adding policy routing for WireGuard return path")
+
+	// Route marked packets back through WireGuard
+	rule := netlink.NewRule()
+	rule.Mark = 1
+	rule.Mask = 1
+	rule.Table = 100
+	_ = netlink.RuleDel(rule) // remove if exists
+	err = netlink.RuleAdd(rule)
+	if err != nil {
+		fmt.Printf("Failed to add routing rule: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	err = netlink.RouteReplace(&netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Table:     100,
+		Dst:       &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: net.CIDRMask(0, 32)},
+	})
+	if err != nil {
+		fmt.Printf("Failed to add route: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
 }
