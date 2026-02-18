@@ -48,3 +48,37 @@ jobs:
 
       - name: Build Docker image
         run: docker build ./client
+
+  e2e:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Docker via Colima
+        uses: douglascamata/setup-docker-macos-action@v1
+
+      - name: Build
+        run: make build
+
+      - name: Start server
+        run: sudo ./docker-mac-net-connect &
+
+      - name: Wait for tunnel
+        run: |
+          for i in $(seq 1 30); do
+            if ping -c 1 -W 1 10.33.33.2 >/dev/null 2>&1; then
+              echo "Tunnel is up"
+              exit 0
+            fi
+            echo "Waiting for tunnel... ($i/30)"
+            sleep 2
+          done
+          echo "Tunnel failed to come up"
+          exit 1
+
+      - name: E2E tests
+        run: make e2e
