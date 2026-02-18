@@ -12,7 +12,10 @@
 
 ## Requirements
 
-You must be using Docker Desktop v3.6.0 or higher to use this tool (see https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058).
+One of the following Docker runtimes:
+
+- **Docker Desktop** v3.6.0 or higher (see [#10](https://github.com/chipmk/docker-mac-net-connect/issues/10#issuecomment-1146662058))
+- **Colima** (likely other Lima-based runtimes as well, but not tested)
 
 ## Installation
 
