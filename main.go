@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	dcontext "github.com/docker/go-sdk/context"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/ipc"
@@ -182,7 +183,15 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	dockerHost, err := dcontext.CurrentDockerHost()
+	if err != nil {
+		logger.Errorf("Failed to resolve Docker host from context: %v", err)
+		os.Exit(ExitSetupFailed)
+	}
+
+	logger.Verbosef("Using Docker host: %s\n", dockerHost)
+
+	cli, err := client.NewClientWithOpts(client.WithHost(dockerHost), client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Errorf("Failed to create Docker client: %v", err)
 		os.Exit(ExitSetupFailed)
