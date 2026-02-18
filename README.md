@@ -184,7 +184,7 @@ Other great solutions have been created to solve this, but none of them are as t
 
 ### Is this secure?
 
-This tool piggybacks off of WireGuard which has gone through numerous audits and security tests (it is built-in to the Linux kernel after all). The `docker-mac-net-connect` server generates new private/public key pairs for each WireGuard peer every time it runs. No values are hard-coded.
+This tool piggybacks off of WireGuard which has gone through numerous audits and security tests (it is built-in to the Linux kernel after all). The `docker-mac-net-connect` server generates new private/public key pairs for each WireGuard peer every time it runs. The WireGuard listen port is also ephemeral - no values are hard-coded.
 
 Network traffic runs directly between the macOS host and local Linux VM - no external connections are made.
 

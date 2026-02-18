@@ -152,7 +152,8 @@ func main() {
 		},
 	}
 
-	port := 3333
+	// Ephemeral port - the actual port is read back and passed to the setup container.
+	port := 0
 	err = c.ConfigureDevice(interfaceName, wgtypes.Config{
 		ListenPort: &port,
 		PrivateKey: &hostPrivateKey,
@@ -162,6 +163,14 @@ func main() {
 		logger.Errorf("Failed to configure Wireguard device: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	wgDevice, err := c.Device(interfaceName)
+	if err != nil {
+		logger.Errorf("Failed to read Wireguard device: %v\n", err)
+		os.Exit(ExitSetupFailed)
+	}
+	port = wgDevice.ListenPort
+	logger.Verbosef("Listening on port %d\n", port)
 
 	networkManager := networkmanager.New()
 
