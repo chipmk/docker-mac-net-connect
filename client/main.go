@@ -253,7 +253,8 @@ func main() {
 	// Route marked packets back through WireGuard
 	rule := netlink.NewRule()
 	rule.Mark = 1
-	rule.Mask = 1
+	mask := uint32(1)
+	rule.Mask = &mask
 	rule.Table = 100
 	_ = netlink.RuleDel(rule) // remove if exists
 	err = netlink.RuleAdd(rule)
