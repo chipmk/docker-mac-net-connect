@@ -58,6 +58,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install kubectl
+        run: brew install kubectl
+
       - name: Setup Docker via Colima
         uses: douglascamata/setup-docker-macos-action@v1
         with:
