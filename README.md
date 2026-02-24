@@ -5,9 +5,10 @@
 ## Features
 
 - **L3 connectivity:** Connect to Docker containers from macOS host (without port binding).
+- **Kubernetes support:** Automatically routes pod and service CIDRs when local k8s is detected (Docker Desktop k8s, Colima/k3s).
 - **Lightweight:** Based on WireGuard (built-in to Linux kernel).
 - **Hands-off:** Install once and forget. No need to re-configure every time you restart your Mac or Docker daemon.
-- **Automatic:** Docker networks are automatically added/removed from macOS routing table.
+- **Automatic:** Docker networks and Kubernetes CIDRs are automatically added/removed from macOS routing table.
 - **No bloat:** Everything is handled by a single binary. No external dependencies/tools are needed.
 
 ## Requirements
@@ -141,6 +142,51 @@ Under the hood, your macOS host's WireGuard IP is translated (NAT) to the Docker
 
 This is safe because only your local macOS host can reach internal containers through the tunnel. Other devices on your LAN cannot reach them unless you have explicitly enabled IP forwarding on your Mac (which is off by default). Even then, LAN traffic is not NAT'd, so the container has no route to reply - effectively making internal containers unreachable from the LAN.
 
+## Kubernetes
+
+If you have Kubernetes enabled in Docker Desktop or running via Colima, `docker-mac-net-connect` automatically detects it and routes pod and service CIDRs through the tunnel. No configuration needed.
+
+```bash
+# Deploy a pod
+$ kubectl run nginx --image=nginx:alpine
+
+# Connect directly to the pod IP from macOS
+$ curl -I $(kubectl get pod nginx -o jsonpath='{.status.podIP}')
+HTTP/1.1 200 OK
+
+# Service ClusterIPs work too
+$ kubectl expose pod nginx --port=80 --name=nginx-svc
+$ curl -I $(kubectl get svc nginx-svc -o jsonpath='{.spec.clusterIP}')
+HTTP/1.1 200 OK
+```
+
+### How it works
+
+The server reads your Docker and kubeconfig contexts at startup and pins them for the session. It monitors:
+
+- **Pod CIDRs** - discovered from Node `spec.podCIDR` fields via the Kubernetes API. On Docker Desktop (which doesn't set `spec.podCIDR`), pod CIDRs are discovered from the VM's routing table instead.
+- **Service CIDRs** - discovered from the ServiceCIDR API (k8s 1.33+)
+
+Routes are added/removed automatically as CIDRs change.
+
+### Supported configurations
+
+Docker Desktop supports two cluster modes: **Kubeadm** (single-node, the default) and **kind** (multi-node). Both are supported.
+
+| Runtime                  | Pod routing | Service routing |
+| ------------------------ | ----------- | --------------- |
+| Docker Desktop (Kubeadm) | Yes         | Yes             |
+| Docker Desktop (kind)    | Yes         | Yes             |
+| Colima (k3s)             | Yes         | Yes             |
+
+Service CIDR routing requires the ServiceCIDR API (k8s 1.33+). On older versions, pod routing still works but service ClusterIPs won't be routable.
+
+### Context pinning
+
+The Docker and kubeconfig contexts are snapshotted once at startup (or when Docker Desktop restarts) and stay fixed for the session. If you switch Docker or Kubernetes contexts later, the service won't pick up the change automatically - you'll need to restart it.
+
+We chose this approach to keep the Docker and Kubernetes contexts coupled together - if they drifted independently mid-session, the service could end up routing CIDRs from one cluster through the wrong Docker runtime's tunnel. In practice this is an edge case since most setups use a single runtime, but it's worth knowing about if you switch between Docker Desktop and Colima. In the future we may add support for setting the contexts via a config file so that you don't have to rely on the correct contexts being active at startup.
+
 ## Accessing Containers from the LAN
 
 By default, `docker-mac-net-connect` enables your macOS host to reach containers directly by IP. With some additional configuration, other devices on your local network can reach containers too.
@@ -197,11 +243,11 @@ This tool was designed to assist with development on macOS. Since Docker-for-Mac
 
 ### What happens if Docker Desktop restarts?
 
-The server detects when the Docker daemon stops and automatically reconfigures the tunnel when it starts back up.
+The server detects when the Docker daemon stops and automatically reconfigures the tunnel when it starts back up. If Kubernetes is enabled, pod and service CIDR routes are also re-added.
 
 ### Do you add/remove routes when Docker networks change?
 
-Yes, the server watches the Docker daemon for both network creations and deletions and will add/remove routes accordingly.
+Yes, the server watches the Docker daemon for both network creations and deletions and will add/remove routes accordingly. Kubernetes pod and service CIDRs are also watched and routed automatically.
 
 For example, let's create a Docker network with subnet `172.200.0.0/16`:
 
@@ -248,6 +294,16 @@ sudo docker-mac-net-connect
 ```
 
 This will show any debug messages that may indicate what is causing your issue.
+
+- **Kubernetes connections not working?** Your kubeconfig context must match your Docker runtime. For example, if you're using Docker Desktop, your kube context should be `docker-desktop`. If you're using Colima, it should be `colima`. The kube context is snapshotted when the service starts - if they were mismatched at startup, fix both contexts and restart the service:
+
+```bash
+# Set the correct kube context
+kubectl config use-context docker-desktop
+
+# Restart the service
+sudo brew services restart chipmk/tap/docker-mac-net-connect
+```
 
 ## License
 
