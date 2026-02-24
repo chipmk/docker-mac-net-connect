@@ -60,6 +60,11 @@ jobs:
 
       - name: Setup Docker via Colima
         uses: douglascamata/setup-docker-macos-action@v1
+        with:
+          colima-additional-options: "--memory 7 --kubernetes"
+
+      - name: Wait for Kubernetes
+        run: kubectl wait --for=condition=ready nodes --all --timeout=120s
 
       - name: Build
         run: make build
