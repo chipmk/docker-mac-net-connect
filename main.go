@@ -5,23 +5,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
-	"os/user"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 	dcontext "github.com/docker/go-sdk/context"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -30,7 +21,9 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
+	"github.com/chipmk/docker-mac-net-connect/consoleuser"
 	"github.com/chipmk/docker-mac-net-connect/networkmanager"
+	"github.com/chipmk/docker-mac-net-connect/networkwatcher"
 	"github.com/chipmk/docker-mac-net-connect/version"
 )
 
@@ -185,25 +178,20 @@ func main() {
 
 	logger.Verbosef("Interface %s created\n", interfaceName)
 
-	// When running as root (e.g. via launchd), the docker config lives under
-	// the console user's home directory. Set DOCKER_CONFIG so the context
-	// resolver can find it.
-	if os.Getenv("DOCKER_CONFIG") == "" {
-		consoleUser, err := getConsoleUser()
-		if err != nil {
-			logger.Verbosef("Failed to get console user: %v\n", err)
+	// Resolve console user's home directory for config file lookups
+	// when running as root (e.g. via launchd).
+	homeDir, err := consoleuser.HomeDir()
+	if err != nil {
+		logger.Verbosef("Failed to resolve console user home: %v\n", err)
+	}
+
+	// Set DOCKER_CONFIG so the context resolver can find it.
+	if os.Getenv("DOCKER_CONFIG") == "" && homeDir != "" {
+		dockerConfig := filepath.Join(homeDir, ".docker")
+		if err := os.Setenv("DOCKER_CONFIG", dockerConfig); err != nil {
+			logger.Verbosef("Failed to set DOCKER_CONFIG: %v\n", err)
 		} else {
-			u, err := user.Lookup(consoleUser)
-			if err != nil {
-				logger.Verbosef("Failed to lookup user %s: %v\n", consoleUser, err)
-			} else {
-				dockerConfig := filepath.Join(u.HomeDir, ".docker")
-				if err := os.Setenv("DOCKER_CONFIG", dockerConfig); err != nil {
-					logger.Verbosef("Failed to set DOCKER_CONFIG: %v\n", err)
-				} else {
-					logger.Verbosef("Set DOCKER_CONFIG to %s (console user: %s)\n", dockerConfig, consoleUser)
-				}
-			}
+			logger.Verbosef("Set DOCKER_CONFIG to %s\n", dockerConfig)
 		}
 	}
 
@@ -227,70 +215,72 @@ func main() {
 
 	ctx := context.Background()
 
+	addRoute := func(cidr, name string) {
+		fmt.Printf("Adding route for %s -> %s (%s)\n", cidr, interfaceName, name)
+		_, stderr, err := networkManager.AddRoute(cidr, interfaceName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to add route: %v. %v\n", err, stderr)
+		}
+	}
+
+	removeRoute := func(cidr, name string) {
+		fmt.Printf("Deleting route for %s (%s)\n", cidr, name)
+		_, stderr, err := networkManager.DeleteRoute(cidr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to delete route: %v. %v\n", err, stderr)
+		}
+	}
+
 	go func() {
 		for {
+			// -- Session start --
+			// Each iteration is a full Docker Desktop session. If Docker
+			// restarts, everything in the VM is gone (WireGuard interface,
+			// iptables rules, k8s API server), so we re-initialize everything.
+
+			sessionCtx, cancelSession := context.WithCancel(ctx)
+
 			logger.Verbosef("Setting up Wireguard on Docker Desktop VM\n")
 
-			err = setupVm(ctx, cli, port, hostPeerIp, vmPeerIp, hostPrivateKey, vmPrivateKey)
+			vmRoutes, err := networkwatcher.SetupVM(sessionCtx, cli, port, hostPeerIp, vmPeerIp, hostPrivateKey, vmPrivateKey)
 			if err != nil {
 				logger.Errorf("Failed to setup VM: %v", err)
+				cancelSession()
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			networks, err := cli.NetworkList(ctx, network.ListOptions{})
+			// Discover and route existing Docker networks.
+			err = networkwatcher.ListNetworks(sessionCtx, cli, addRoute)
 			if err != nil {
 				logger.Errorf("Failed to list Docker networks: %v", err)
+				cancelSession()
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			for _, network := range networks {
-				networkManager.ProcessDockerNetworkCreate(network, interfaceName)
-			}
-
-			logger.Verbosef("Watching Docker events\n")
-
-			msgs, errsChan := cli.Events(ctx, events.ListOptions{
-				Filters: filters.NewArgs(
-					filters.Arg("type", "network"),
-					filters.Arg("event", "create"),
-					filters.Arg("event", "destroy"),
-				),
-			})
-
-			for loop := true; loop; {
-				select {
-				case err := <-errsChan:
-					logger.Errorf("Error: %v\n", err)
-					loop = false
-				case msg := <-msgs:
-					// Add routes when new Docker networks are created
-					if msg.Type == "network" && msg.Action == "create" {
-						loopNetwork, err := cli.NetworkInspect(ctx, msg.Actor.ID, network.InspectOptions{})
-						if err != nil {
-							logger.Errorf("Failed to inspect new Docker network: %v", err)
-							continue
-						}
-
-						networkManager.ProcessDockerNetworkCreate(loopNetwork, interfaceName)
-						continue
-					}
-
-					// Delete routes when Docker networks are destroyed
-					if msg.Type == "network" && msg.Action == "destroy" {
-						loopNetwork, exists := networkManager.DockerNetworks[msg.Actor.ID]
-						if !exists {
-							logger.Errorf("Unknown Docker network with ID %s. No routes will be removed.")
-							continue
-						}
-
-						networkManager.ProcessDockerNetworkDestroy(loopNetwork)
-						continue
-					}
+			// Start k8s watcher in background (scoped to this session).
+			// Retries independently - k8s can start/stop separately from Docker.
+			// Pin the kube context now so it stays coupled to this Docker session
+			// even if the user switches kube contexts later.
+			if homeDir != "" {
+				if kubeContext := networkwatcher.ResolveKubeContext(homeDir); kubeContext != "" {
+					go networkwatcher.RunKubeWatcher(sessionCtx, homeDir, kubeContext, vmRoutes, addRoute, removeRoute)
+				} else {
+					fmt.Println("No kubeconfig context set, skipping Kubernetes watcher")
 				}
 			}
 
+			// Watch Docker events (blocks until disconnect).
+			logger.Verbosef("Watching Docker events\n")
+
+			err = networkwatcher.WatchEvents(sessionCtx, cli, addRoute, removeRoute)
+			if err != nil {
+				logger.Errorf("Docker watch error: %v", err)
+			}
+
+			// -- Session over --
+			cancelSession()
 			time.Sleep(5 * time.Second)
 		}
 	}()
@@ -312,99 +302,4 @@ func main() {
 	mainDevice.Close()
 
 	logger.Verbosef("Shutting down\n")
-}
-
-func setupVm(
-	ctx context.Context,
-	dockerCli *client.Client,
-	serverPort int,
-	hostPeerIp string,
-	vmPeerIp string,
-	hostPrivateKey wgtypes.Key,
-	vmPrivateKey wgtypes.Key,
-) error {
-	imageName := fmt.Sprintf("%s:%s", version.SetupImage, version.Version)
-
-	_, err := dockerCli.ImageInspect(ctx, imageName)
-	if err != nil {
-		fmt.Printf("Image doesn't exist locally. Pulling...\n")
-
-		pullStream, err := dockerCli.ImagePull(ctx, imageName, image.PullOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to pull setup image: %w", err)
-		}
-
-		_, _ = io.Copy(os.Stdout, pullStream)
-	}
-
-	resp, err := dockerCli.ContainerCreate(ctx, &container.Config{
-		Image: imageName,
-		Env: []string{
-			"SERVER_PORT=" + strconv.Itoa(serverPort),
-			"HOST_PEER_IP=" + hostPeerIp,
-			"VM_PEER_IP=" + vmPeerIp,
-			"HOST_PUBLIC_KEY=" + hostPrivateKey.PublicKey().String(),
-			"VM_PRIVATE_KEY=" + vmPrivateKey.String(),
-		},
-	}, &container.HostConfig{
-		AutoRemove:  true,
-		NetworkMode: "host",
-		CapAdd:      []string{"NET_ADMIN"},
-	}, nil, nil, "wireguard-setup")
-	if err != nil {
-		return fmt.Errorf("failed to create container: %w", err)
-	}
-
-	// Run container to completion
-	err = dockerCli.ContainerStart(ctx, resp.ID, container.StartOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
-	}
-
-	if err := func() error {
-		reader, err := dockerCli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
-			ShowStdout: true,
-			ShowStderr: true,
-			Follow:     true,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to get logs for container %s: %w", resp.ID, err)
-		}
-
-		defer func() { _ = reader.Close() }()
-
-		_, err = stdcopy.StdCopy(os.Stdout, os.Stderr, reader)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}(); err != nil {
-		return err
-	}
-
-	fmt.Println("Setup container complete")
-
-	return nil
-}
-
-// getConsoleUser returns the username of the currently logged-in GUI user
-// by checking the owner of /dev/console.
-func getConsoleUser() (string, error) {
-	info, err := os.Stat("/dev/console")
-	if err != nil {
-		return "", fmt.Errorf("stat /dev/console: %w", err)
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return "", fmt.Errorf("unexpected stat type for /dev/console")
-	}
-	u, err := user.LookupId(strconv.FormatUint(uint64(stat.Uid), 10))
-	if err != nil {
-		return "", fmt.Errorf("lookup uid %d: %w", stat.Uid, err)
-	}
-	if u.Username == "root" {
-		return "", fmt.Errorf("no console user logged in")
-	}
-	return u.Username, nil
 }

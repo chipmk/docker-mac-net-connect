@@ -22,6 +22,8 @@ cleanup() {
   docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
   docker rm -f "${CONTAINER_NAME}-internal" 2>/dev/null || true
   docker network rm "$INTERNAL_NETWORK_NAME" 2>/dev/null || true
+  kubectl delete pod e2e-test 2>/dev/null || true
+  kubectl delete svc e2e-test-svc 2>/dev/null || true
 }
 trap cleanup EXIT
 cleanup
@@ -78,4 +80,55 @@ if curl -sf --connect-timeout 5 "http://$INTERNAL_CONTAINER_IP" >/dev/null; then
 else
   echo "FAIL: Could not reach internal container at $INTERNAL_CONTAINER_IP"
   exit 1
+fi
+
+# --- Test 3: Kubernetes pod connectivity (if k8s enabled) ---
+# Uses the active kubeconfig context (same as the app does).
+
+if kubectl cluster-info >/dev/null 2>&1; then
+  echo ""
+  echo "=== Test 3: Kubernetes pod connectivity ==="
+
+  KUBE_CONTEXT=$(kubectl config current-context)
+  echo "Using kubeconfig context: $KUBE_CONTEXT"
+
+  echo "Deploying test pod..."
+  kubectl run e2e-test --image=nginx:alpine --restart=Never >/dev/null
+  kubectl wait --for=condition=ready pod/e2e-test --timeout=60s >/dev/null
+
+  POD_IP=$(kubectl get pod e2e-test -o jsonpath='{.status.podIP}')
+
+  echo "Pod IP: $POD_IP"
+  echo "Attempting to reach pod directly..."
+  if curl -sf --connect-timeout 5 "http://$POD_IP" >/dev/null; then
+    echo "PASS: Successfully reached k8s pod at $POD_IP"
+  else
+    echo "FAIL: Could not reach k8s pod at $POD_IP"
+    exit 1
+  fi
+
+  # --- Test 4: Kubernetes service connectivity ---
+
+  echo ""
+  echo "=== Test 4: Kubernetes service connectivity ==="
+
+  kubectl expose pod e2e-test --port=80 --name=e2e-test-svc >/dev/null
+  SVC_IP=$(kubectl get svc e2e-test-svc -o jsonpath='{.spec.clusterIP}')
+
+  echo "Service ClusterIP: $SVC_IP"
+  echo "Waiting for service to become reachable..."
+  for i in $(seq 1 10); do
+    if curl -sf --connect-timeout 2 "http://$SVC_IP" >/dev/null 2>&1; then
+      echo "PASS: Successfully reached k8s service at $SVC_IP"
+      break
+    fi
+    if [ "$i" -eq 10 ]; then
+      echo "FAIL: Could not reach k8s service at $SVC_IP"
+      exit 1
+    fi
+    sleep 1
+  done
+else
+  echo ""
+  echo "=== Test 3: Kubernetes (SKIPPED - k8s not enabled) ==="
 fi

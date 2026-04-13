@@ -12,6 +12,7 @@ Two Go binaries, one on each side of the tunnel:
    - Creates a `utun` interface with a WireGuard server
    - Generates ephemeral WireGuard key pairs per run
    - Watches Docker events to add/remove routes for container subnets
+   - Watches Kubernetes Nodes and ServiceCIDRs for pod/service CIDR routes
    - Reconnects automatically if Docker Desktop restarts
 
 2. **Setup container** (`client/main.go`) - ephemeral container inside Docker Desktop VM
@@ -28,10 +29,14 @@ The tunnel peers use a fixed `10.33.33.0/24` subnet (`10.33.33.1` = host, `10.33
 main.go                  # Host binary entry point (darwin-only build tag)
 version/version.go       # Build-time version + setup image vars (set via ldflags)
 networkmanager/           # macOS routing table management (ifconfig, route)
+networkwatcher/           # Docker and Kubernetes network monitoring
+  docker.go              # Docker VM setup, network listing, event watching
+  kube.go                # Kubernetes CIDR watcher (Nodes + ServiceCIDRs)
+consoleuser/             # Console user resolution (for root/launchd context)
 client/                   # Setup container (separate Go module)
   main.go                # VM-side WireGuard + iptables setup
   Dockerfile             # Multi-stage build (golang -> debian)
-scripts/e2e-test.sh      # Smoke test - spins up nginx, curls its container IP
+scripts/e2e-test.sh      # Smoke test - Docker + k8s connectivity
 ```
 
 ## Build and run

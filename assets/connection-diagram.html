@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connection Diagram</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    svg {
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.06));
+    }
+  </style>
+</head>
+<body>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 820" width="1300" height="820">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#c0c0c0" />
+      </marker>
+      <marker id="arrowBack" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto-start-reverse">
+        <polygon points="0 0, 8 3, 0 6" fill="#c0c0c0" />
+      </marker>
+      <!-- Subtle shadow filter -->
+      <filter id="boxShadow" x="-2%" y="-2%" width="104%" height="108%">
+        <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.06" />
+      </filter>
+    </defs>
+
+    <!-- Outer background -->
+    <rect width="1300" height="820" fill="#ececec" rx="4" />
+
+    <!-- ============================================ -->
+    <!-- macOS Host container (dashed border) -->
+    <!-- ============================================ -->
+    <rect x="40" y="30" width="1220" height="750" rx="20" ry="20"
+      fill="white" stroke="#d8d8d8" stroke-width="2" stroke-dasharray="10,7" />
+
+    <!-- Apple logo (SVG path) -->
+    <g transform="translate(75, 48) scale(0.075)">
+      <path fill="#333" d="M394.74 150.37c-23.3 13.4-39.2 36.4-42.4 63.1-0.4 3.5-0.7 7-0.7 10.6 0 3.2 0.2 6.3 0.6 9.4 3.4 28 19.8 52.1 44.2 65.7 7.2 4 15.1 6.8 23.4 8.1-5.7 16.7-13.4 32.7-23.2 47.5-14.6 22-29.7 44.1-53.5 44.5-23.4 0.5-30.9-13.9-57.6-13.9-26.8 0-35 13.5-57 14.3-23 0.8-40.5-23.8-55.2-45.7-30.1-44.8-53.1-126.7-22.2-181.9 15.3-27.3 42.7-44.6 72.3-45.1 22.5-0.4 43.8 15.2 57.6 15.2 13.8 0 39.6-18.8 66.7-16 11.4 0.5 43.2 4.6 63.7 34.4-1.6 1.1-38 22.2-37.7 66.1zM325.1 47c12.2-14.8 20.4-35.4 18.2-55.9-17.6 0.7-38.8 11.7-51.4 26.5-11.3 13.3-21.2 34.5-18.5 54.9 19.6 1.5 39.5-10 51.7-25.5z"/>
+    </g>
+
+    <!-- macOS Host title -->
+    <text x="120" y="95" font-size="42" fill="#3a3a3a" font-weight="300" letter-spacing="-0.5"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">macOS Host</text>
+
+    <!-- ============================================ -->
+    <!-- Linux VM container -->
+    <!-- ============================================ -->
+    <rect x="600" y="130" width="610" height="560" rx="18" ry="18"
+      fill="#f0f5f9" stroke="#d8d8d8" stroke-width="1.5" />
+
+    <!-- Docker logo (simplified container ship) -->
+    <g transform="translate(645, 157) scale(0.6)">
+      <!-- Container stacks -->
+      <rect x="0" y="22" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="16" y="22" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="32" y="22" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="0" y="7" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="16" y="7" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="32" y="7" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <rect x="16" y="-8" width="13" height="11" rx="1.5" fill="#4a4a4a" />
+      <!-- Whale body -->
+      <path d="M-6,36 C-6,36 -4,52 12,56 L40,56 C56,52 58,36 58,36 Z" fill="#4a4a4a" />
+    </g>
+
+    <!-- Linux VM title -->
+    <text x="690" y="185" font-size="34" font-weight="600" fill="#3a3a3a" letter-spacing="-0.3"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">Linux VM</text>
+    <text x="884" y="185" font-size="34" font-weight="300" fill="#aaa" letter-spacing="-0.3"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">(Docker Desktop)</text>
+
+    <!-- ============================================ -->
+    <!-- LEFT: Network Interfaces ellipse (macOS) -->
+    <!-- ============================================ -->
+    <rect x="50" y="215" width="470" height="200" rx="22" ry="22"
+      fill="none" stroke="#d5d5d5" stroke-width="1.5" stroke-dasharray="4,5" />
+
+    <!-- Network Interfaces label -->
+    <text x="135" y="295" font-size="21" fill="#999" font-style="italic" font-weight="500"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">Network Interfaces</text>
+    <text x="370" y="295" font-size="16" fill="#c5c5c5"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">(ifconfig)</text>
+
+    <!-- utun0 pill -->
+    <rect x="150" y="328" width="115" height="48" rx="14" fill="#444" filter="url(#boxShadow)" />
+    <text x="207" y="359" text-anchor="middle" font-size="17" fill="white" font-weight="500"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">utun0</text>
+
+    <!-- ... pill -->
+    <rect x="290" y="328" width="75" height="48" rx="14" fill="#444" filter="url(#boxShadow)" />
+    <text x="327" y="359" text-anchor="middle" font-size="18" fill="white" letter-spacing="3"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">...</text>
+
+    <!-- ============================================ -->
+    <!-- RIGHT: Network Interfaces ellipse (Linux VM) -->
+    <!-- ============================================ -->
+    <rect x="635" y="215" width="470" height="200" rx="22" ry="22"
+      fill="none" stroke="#d0d0d0" stroke-width="1.5" stroke-dasharray="4,5" />
+
+    <!-- Network Interfaces label -->
+    <text x="720" y="295" font-size="21" fill="#999" font-style="italic" font-weight="500"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">Network Interfaces</text>
+    <text x="955" y="295" font-size="16" fill="#c5c5c5"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">(ifconfig)</text>
+
+    <!-- chip0 pill -->
+    <rect x="735" y="328" width="115" height="48" rx="14" fill="#444" filter="url(#boxShadow)" />
+    <text x="792" y="359" text-anchor="middle" font-size="17" fill="white" font-weight="500"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">chip0</text>
+
+    <!-- ... pill -->
+    <rect x="875" y="328" width="75" height="48" rx="14" fill="#444" filter="url(#boxShadow)" />
+    <text x="912" y="359" text-anchor="middle" font-size="18" fill="white" letter-spacing="3"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">...</text>
+
+    <!-- ============================================ -->
+    <!-- docker-mac-net-connect (bottom left) -->
+    <!-- ============================================ -->
+    <rect x="85" y="540" width="380" height="68" rx="34" fill="#fdf6d8" stroke="#ede5b8" stroke-width="1.5" />
+    <text x="275" y="582" text-anchor="middle" font-size="20" fill="#555" font-weight="600"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">docker-mac-net-connect</text>
+
+    <!-- (this package) -->
+    <text x="275" y="636" text-anchor="middle" font-size="16" fill="#c0c0c0"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+      font-style="italic">(this package)</text>
+
+    <!-- ============================================ -->
+    <!-- wireguard kernel module (bottom right) -->
+    <!-- ============================================ -->
+    <rect x="690" y="540" width="360" height="68" rx="34" fill="white" stroke="#d8d8d8" stroke-width="1.5" />
+    <text x="870" y="582" text-anchor="middle" font-size="20" fill="#555" font-weight="600"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">wireguard kernel module</text>
+
+    <!-- (built-in to Docker Desktop VM) -->
+    <text x="870" y="636" text-anchor="middle" font-size="16" fill="#c0c0c0"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+      font-style="italic">(built-in to Docker Desktop VM)</text>
+
+    <!-- ============================================ -->
+    <!-- Arrows (dashed, gray) -->
+    <!-- ============================================ -->
+
+    <!-- Arrow: docker-mac-net-connect <-> utun0 -->
+    <line x1="215" y1="538" x2="210" y2="380"
+      stroke="#c0c0c0" stroke-width="1.5" stroke-dasharray="6,5" marker-end="url(#arrow)" marker-start="url(#arrowBack)" />
+
+    <!-- Arrow: wireguard kernel module <-> chip0 -->
+    <line x1="810" y1="538" x2="798" y2="380"
+      stroke="#c0c0c0" stroke-width="1.5" stroke-dasharray="6,5" marker-end="url(#arrow)" marker-start="url(#arrowBack)" />
+
+    <!-- Arrow: docker-mac-net-connect <-> wireguard kernel module (horizontal) -->
+    <line x1="468" y1="574" x2="686" y2="574"
+      stroke="#c0c0c0" stroke-width="1.5" stroke-dasharray="6,5" marker-end="url(#arrow)" marker-start="url(#arrowBack)" />
+
+    <!-- "wireguard" label on horizontal arrow -->
+    <text x="577" y="564" text-anchor="middle" font-size="16" fill="#c0c0c0"
+      font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+      font-style="italic">wireguard</text>
+  </svg>
+</body>
+</html>

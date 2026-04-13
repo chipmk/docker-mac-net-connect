@@ -287,4 +287,19 @@ func main() {
 		fmt.Printf("Failed to add route: %v\n", err)
 		os.Exit(ExitSetupFailed)
 	}
+
+	// Report CNI routes from the VM so the host can add them for k8s pod
+	// connectivity. Docker Desktop doesn't set spec.podCIDR on nodes, so
+	// the host can't discover pod CIDRs via the k8s API alone.
+	cni, err := netlink.LinkByName("cni0")
+	if err == nil {
+		routes, err := netlink.RouteList(cni, netlink.FAMILY_V4)
+		if err == nil {
+			for _, r := range routes {
+				if r.Dst != nil {
+					fmt.Printf("VM_ROUTE=%s\n", r.Dst.String())
+				}
+			}
+		}
+	}
 }
